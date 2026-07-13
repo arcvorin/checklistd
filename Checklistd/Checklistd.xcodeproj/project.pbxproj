@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1A00584430042E1600A2CCE8 /* VersionedCodable in Frameworks */ = {isa = PBXBuildFile; productRef = 1A00584330042E1600A2CCE8 /* VersionedCodable */; };
+		1A0058503005736B00A2CCE8 /* test.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A00584F3005736100A2CCE8 /* test.json */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		1A1BFA4230042A8A00BC447B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		1A00584F3005736100A2CCE8 /* test.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = test.json; sourceTree = "<group>"; };
 		1A1BFA3430042A8900BC447B /* Checklistd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Checklistd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1BFA4130042A8A00BC447B /* ChecklistdTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChecklistdTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1BFA4B30042A8A00BC447B /* ChecklistdUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChecklistdUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -52,6 +58,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A00584430042E1600A2CCE8 /* VersionedCodable in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +82,7 @@
 		1A1BFA2B30042A8900BC447B = {
 			isa = PBXGroup;
 			children = (
+				1A00584F3005736100A2CCE8 /* test.json */,
 				1A1BFA3630042A8900BC447B /* Checklistd */,
 				1A1BFA4430042A8A00BC447B /* ChecklistdTests */,
 				1A1BFA4E30042A8A00BC447B /* ChecklistdUITests */,
@@ -112,6 +120,7 @@
 			);
 			name = Checklistd;
 			packageProductDependencies = (
+				1A00584330042E1600A2CCE8 /* VersionedCodable */,
 			);
 			productName = Checklistd;
 			productReference = 1A1BFA3430042A8900BC447B /* Checklistd.app */;
@@ -195,6 +204,9 @@
 			);
 			mainGroup = 1A1BFA2B30042A8900BC447B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1A00584230042E1600A2CCE8 /* XCRemoteSwiftPackageReference "VersionedCodable" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A1BFA3530042A8900BC447B /* Products */;
 			projectDirPath = "";
@@ -212,6 +224,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A0058503005736B00A2CCE8 /* test.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -615,6 +628,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1A00584230042E1600A2CCE8 /* XCRemoteSwiftPackageReference "VersionedCodable" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jrothwell/VersionedCodable.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1A00584330042E1600A2CCE8 /* VersionedCodable */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A00584230042E1600A2CCE8 /* XCRemoteSwiftPackageReference "VersionedCodable" */;
+			productName = VersionedCodable;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1A1BFA2C30042A8900BC447B /* Project object */;
 }

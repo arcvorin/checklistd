@@ -1,0 +1,220 @@
+{
+    "version": 1,
+    "title": "Checklistd Sample Program",
+    "authorName": "Arc Vorin",
+    "description": "Testing for science, you monsters!",
+    "steps": [
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "id": "intro",
+                "message": "Welcome. This sample collects profile, planning, and review details.",
+                "nextStepId": "name-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "name-input",
+                "inputKind": {
+                    "text": {}
+                },
+                "label": "What is your name?",
+                "key": "name",
+                "nextStepId": "greeting"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "id": "greeting",
+                "message": "Nice to meet you, {{ name }}. Next we will collect a few typed values.",
+                "nextStepId": "age-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "age-input",
+                "inputKind": {
+                    "int": {
+                        "start": 0,
+                        "end": 130
+                    }
+                },
+                "label": "How old are you, {{ name }}? Enter a value from 0 to 130.",
+                "key": "age",
+                "nextStepId": "confidence-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "confidence-input",
+                "inputKind": {
+                    "float": {
+                        "start": 0,
+                        "end": 10
+                    }
+                },
+                "label": "How confident are you today, {{ name }}? Use a score from 0.0 to 10.0.",
+                "key": "confidence",
+                "nextStepId": "profile-summary"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "id": "profile-summary",
+                "message": "Profile so far: {{ name }}, age {{ age }}, confidence {{ confidence }}/10.",
+                "nextStepId": "priority-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "priority-input",
+                "inputKind": {
+                    "choice": {
+                        "options": [
+                            "Low",
+                            "Medium",
+                            "High"
+                        ],
+                        "allowOther": false
+                    }
+                },
+                "label": "Choose a fixed priority.",
+                "key": "priority",
+                "nextStepId": "role-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "role-input",
+                "inputKind": {
+                    "choice": {
+                        "options": [
+                            "Designer",
+                            "Engineer",
+                            "Researcher"
+                        ],
+                        "allowOther": true
+                    }
+                },
+                "label": "Choose a role or enter a custom one.",
+                "key": "role",
+                "nextStepId": "deadline-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "deadline-input",
+                "inputKind": {
+                    "date": {
+                        "start": 788936400,
+                        "end": 820386000
+                    }
+                },
+                "label": "Pick a 2026 deadline for {{ priority }} priority work.",
+                "key": "deadline",
+                "value": {
+                    "date": {
+                        "date": 795240000
+                    }
+                },
+                "nextStepId": "review-date-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "review-date-input",
+                "inputKind": {
+                    "date": {
+                        "options": [
+                            795240000,
+                            803620800,
+                            812001600
+                        ]
+                    }
+                },
+                "label": "Choose one of the available review dates.",
+                "key": "reviewDate",
+                "value": {
+                    "date": {
+                        "date": 795240000
+                    }
+                },
+                "nextStepId": "date-summary"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "id": "date-summary",
+                "message": "Timeline: deadline {{ deadline }}, review {{ reviewDate }}.",
+                "nextStepId": "include-age-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "include-age-input",
+                "inputKind": {
+                    "bool": {}
+                },
+                "label": "{{ name }}, include your age in the final summary?",
+                "key": "includeAge",
+                "value": {
+                    "bool": {
+                        "bool": false
+                    }
+                },
+                "nextStepId": "color-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "id": "color-input",
+                "inputKind": {
+                    "choice": {
+                        "options": [
+                            "Red",
+                            "Green",
+                            "Blue"
+                        ],
+                        "allowOther": false
+                    }
+                },
+                "label": "Choose a status color.",
+                "key": "color",
+                "nextStepId": "final-summary"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "id": "final-summary",
+                "message": "Final summary: {{ name }} is working as {{ role }} on {{ priority }} priority work. Age {{ age }} included: {{ includeAge }}. Confidence {{ confidence }}/10. Color: {{ color }}."
+            }
+        }
+    ]
+}

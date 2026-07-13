@@ -2,7 +2,7 @@
 //  ChecklistdUITestsLaunchTests.swift
 //  ChecklistdUITests
 //
-//  Created by Javier Matusevich on 2026-07-12.
+//  Created by Arc Vorin on 2026-07-12.
 //
 
 import XCTest
