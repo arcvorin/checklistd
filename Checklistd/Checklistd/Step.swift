@@ -120,6 +120,13 @@ struct TextStep: Step {
     var message: String
     private var nextStepId: String?
     
+    init(id: String, message: String, nextStepId: String? = nil) {
+        self.type = .text
+        self.id = id
+        self.message = message
+        self.nextStepId = nextStepId
+    }
+    
     func compute(variables: [String: Variable]) -> Step {
         var copy = self
         copy.message = (try? Parser.interpolate(message, variables: variables)) ?? message

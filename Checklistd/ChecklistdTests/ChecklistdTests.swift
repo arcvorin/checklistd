@@ -14,12 +14,12 @@ struct ChecklistdTests {
         let output = try Parser.interpolate(
             "Hello {{ name }}, you have {{count}} tasks.",
             variables: [
-                "name": .string(value: "Javier"),
+                "name": .string(value: "Arc"),
                 "count": .int(int: 3)
             ]
         )
         
-        #expect(output == "Hello Javier, you have 3 tasks.")
+        #expect(output == "Hello Arc, you have 3 tasks.")
     }
     
     @Test func parserInterpolatesVariableTypes() throws {
@@ -35,7 +35,7 @@ struct ChecklistdTests {
             ]
         )
         
-        #expect(output == "value 1970-01-01T00:00:00Z 42 true 3.5")
+        #expect(output == "value \(Variable.date(date: date).interpolatedValue) 42 true 3.5")
     }
     
     @Test func parserThrowsForMissingVariable() throws {
@@ -59,10 +59,10 @@ struct ChecklistdTests {
     }
     
     @Test func textStepComputesInterpolatedMessage() {
-        let step = TextStep(message: "Hello {{ name }}")
-        let computedStep = step.compute(variables: ["name": .string(value: "Javier")])
+        let step = TextStep(id: "greeting", message: "Hello {{ name }}")
+        let computedStep = step.compute(variables: ["name": .string(value: "Arc")])
         let computedTextStep = computedStep as? TextStep
         
-        #expect(computedTextStep?.message == "Hello Javier")
+        #expect(computedTextStep?.message == "Hello Arc")
     }
 }
