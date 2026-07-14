@@ -46,6 +46,23 @@ struct Execution {
         }
         
         activeSteps = try activeSteps.map({ try $0.compute(with: variables)})
+        updateVariablesFromComputedSteps()
+        
+        if let currentStep = activeSteps.last, !currentStep.computedStep.step.visible {
+            activeSteps.removeLast()
+            activeSteps.append(try currentStep.withCompletion(true, variables: variables))
+            try self.run()
+        }
+    }
+    
+    mutating private func updateVariablesFromComputedSteps() {
+        for activeStep in activeSteps {
+            guard let computeStep = activeStep.computedStep.step as? ComputeStep,
+                  let computedValue = computeStep.computedValue else {
+                continue
+            }
+            variables[computeStep.key] = .float(float: computedValue)
+        }
     }
     
     mutating func completeStep() throws {
@@ -69,6 +86,9 @@ struct Execution {
         for activeStep in removedSteps {
             if let inputStep = activeStep.stepEnvelope.step as? InputStep {
                 variables.removeValue(forKey: inputStep.key)
+            }
+            if let computeStep = activeStep.stepEnvelope.step as? ComputeStep {
+                variables.removeValue(forKey: computeStep.key)
             }
         }
         

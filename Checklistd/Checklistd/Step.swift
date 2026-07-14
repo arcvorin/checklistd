@@ -7,14 +7,16 @@
 
 import Foundation
 import VersionedCodable
-
+import Expression
 enum StepType : String, Codable {
     case text
     case input
+    case compute
     var metatype: Step.Type {
         switch self {
             case .text: return TextStep.self
             case .input: return InputStep.self
+            case .compute: return ComputeStep.self
         }
         
     }
@@ -73,32 +75,55 @@ enum InputKind : Codable {
 
 protocol Step : Codable {
     var type: StepType { get }
-    var id: String { get }
-    var name: String { get }
-    var description: String? { get }
-    var visible: Bool { get }
+    var metadata: StepMetadata { get }
     func compute(variables: [String: Variable]) throws -> Step
     func canComplete(with variables: [String: Variable]) throws -> Bool
     func getNextStep() -> String?
 }
 
+struct StepMetadata: Codable {
+    var id: String
+    var name: String
+    var description: String?
+    var visible: Bool
+    
+    init(id: String, name: String = "Untitled", description: String? = nil, visible: Bool = true) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.visible = visible
+    }
+    
+    private enum CodingKeys: CodingKey {
+        case id, name, description, visible
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.visible = try container.decodeIfPresent(Bool.self, forKey: .visible) ?? true
+    }
+}
+
 extension Step {
     var id: String {
-        UUID().uuidString
+        metadata.id
     }
     var name: String {
-        "Untitled"
+        metadata.name
     }
     
     var description: String? {
-        nil
+        metadata.description
     }
     
     func getNextStep() -> String? {
         nil
     }
     var visible: Bool {
-        true
+        metadata.visible
     }
     
     func canComplete(with variables: [String: Variable]) throws -> Bool {
@@ -116,13 +141,13 @@ enum ComputeError: Error {
 
 struct TextStep: Step {
     var type = StepType.text
-    var id: String
+    var metadata: StepMetadata
     var message: String
     private var nextStepId: String?
     
     init(id: String, message: String, nextStepId: String? = nil) {
         self.type = .text
-        self.id = id
+        self.metadata = StepMetadata(id: id)
         self.message = message
         self.nextStepId = nextStepId
     }
@@ -140,7 +165,7 @@ struct TextStep: Step {
 
 struct InputStep: Step {
     var type = StepType.input
-    var id: String
+    var metadata: StepMetadata
     var inputKind: InputKind
     var label: String?
     var value: Variable?
@@ -174,6 +199,63 @@ struct InputStep: Step {
         nextStepId
     }
 }
+
+struct ComputeStep: Step {
+    var type = StepType.compute
+    var metadata: StepMetadata
+    var key: String
+    var expression: String
+    var computedValue: Float?
+    var nextStepId: String
+    
+    func expressionVariables() -> [String] {
+        let expr = Expression(expression)
+        var seenVariables = Set<String>()
+        
+        return expr.symbols.compactMap { symbol -> String? in
+            guard case .variable(let name) = symbol else { return nil }
+            guard !seenVariables.contains(name) else { return nil }
+            seenVariables.insert(name)
+            return name
+        }
+    }
+    
+    func missingOrNonNumericVariables(in availableVariables: [String: Variable]) -> [String] {
+        expressionVariables().filter { variableName in
+            guard let variable = availableVariables[variableName] else { return true }
+            return variable.numericValue == nil
+        }
+    }
+    
+    func canEvaluate(variables: [String: Variable]) -> Bool {
+        missingOrNonNumericVariables(in: variables).isEmpty
+    }
+    
+    func compute(variables: [String: Variable]) throws -> any Step {
+        var copy = self
+        guard self.canEvaluate(variables: variables) else {
+            throw ComputeError.variableStorageMismatch
+        }
+        
+        let expressionVariables = expressionVariables()
+        let constants = Dictionary(uniqueKeysWithValues: expressionVariables.map { variableName in
+            (variableName, variables[variableName]!.numericValue!)
+        })
+        let expr = Expression(expression, constants: constants)
+        
+        copy.computedValue = Float(try expr.evaluate())
+        return copy
+    }
+    
+    func canComplete(with variables: [String : Variable]) throws -> Bool {
+        canEvaluate(variables: variables)
+    }
+    
+    func getNextStep() -> String? {
+        nextStepId
+    }
+}
+
 
 struct StepEnvelope {
     let step: Step

@@ -8,7 +8,7 @@
             "type": "text",
             "step": {
                 "type": "text",
-                "id": "intro",
+                "metadata": { "id": "intro" },
                 "message": "Welcome. This sample collects profile, planning, and review details.",
                 "nextStepId": "name-input"
             }
@@ -17,7 +17,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "name-input",
+                "metadata": { "id": "name-input" },
                 "inputKind": {
                     "text": {}
                 },
@@ -30,7 +30,7 @@
             "type": "text",
             "step": {
                 "type": "text",
-                "id": "greeting",
+                "metadata": { "id": "greeting" },
                 "message": "Nice to meet you, {{ name }}. Next we will collect a few typed values.",
                 "nextStepId": "age-input"
             }
@@ -39,7 +39,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "age-input",
+                "metadata": { "id": "age-input" },
                 "inputKind": {
                     "int": {
                         "start": 0,
@@ -55,7 +55,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "confidence-input",
+                "metadata": { "id": "confidence-input" },
                 "inputKind": {
                     "float": {
                         "start": 0,
@@ -64,6 +64,28 @@
                 },
                 "label": "How confident are you today, {{ name }}? Use a score from 0.0 to 10.0.",
                 "key": "confidence",
+                "nextStepId": "profile-score-compute"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "profile-score-compute",
+                    "visible": false
+                },
+                "key": "profileScore",
+                "expression": "age + confidence * 2",
+                "nextStepId": "profile-score-summary"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "profile-score-summary" },
+                "message": "Computed profile score: {{ profileScore }}.",
                 "nextStepId": "profile-summary"
             }
         },
@@ -71,7 +93,7 @@
             "type": "text",
             "step": {
                 "type": "text",
-                "id": "profile-summary",
+                "metadata": { "id": "profile-summary" },
                 "message": "Profile so far: {{ name }}, age {{ age }}, confidence {{ confidence }}/10.",
                 "nextStepId": "priority-input"
             }
@@ -80,7 +102,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "priority-input",
+                "metadata": { "id": "priority-input" },
                 "inputKind": {
                     "choice": {
                         "options": [
@@ -100,7 +122,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "role-input",
+                "metadata": { "id": "role-input" },
                 "inputKind": {
                     "choice": {
                         "options": [
@@ -120,7 +142,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "deadline-input",
+                "metadata": { "id": "deadline-input" },
                 "inputKind": {
                     "date": {
                         "start": 788936400,
@@ -141,7 +163,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "review-date-input",
+                "metadata": { "id": "review-date-input" },
                 "inputKind": {
                     "date": {
                         "options": [
@@ -165,7 +187,7 @@
             "type": "text",
             "step": {
                 "type": "text",
-                "id": "date-summary",
+                "metadata": { "id": "date-summary" },
                 "message": "Timeline: deadline {{ deadline }}, review {{ reviewDate }}.",
                 "nextStepId": "include-age-input"
             }
@@ -174,7 +196,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "include-age-input",
+                "metadata": { "id": "include-age-input" },
                 "inputKind": {
                     "bool": {}
                 },
@@ -192,7 +214,7 @@
             "type": "input",
             "step": {
                 "type": "input",
-                "id": "color-input",
+                "metadata": { "id": "color-input" },
                 "inputKind": {
                     "choice": {
                         "options": [
@@ -212,7 +234,7 @@
             "type": "text",
             "step": {
                 "type": "text",
-                "id": "final-summary",
+                "metadata": { "id": "final-summary" },
                 "message": "Final summary: {{ name }} is working as {{ role }} on {{ priority }} priority work. Age {{ age }} included: {{ includeAge }}. Confidence {{ confidence }}/10. Color: {{ color }}."
             }
         }

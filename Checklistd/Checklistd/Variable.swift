@@ -53,6 +53,17 @@ extension Variable {
                 .float
         }
     }
+    
+    var numericValue: Double? {
+        switch self {
+            case .int(let int):
+                Double(int)
+            case .float(let float):
+                Double(float)
+            case .string, .date, .bool:
+                nil
+        }
+    }
 }
 
 struct Parser {

@@ -37,7 +37,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
-                List(Array(execution.activeSteps.enumerated()), id: \.offset) { index, activeStep in
+                List(visibleActiveSteps(for: execution), id: \.offset) { index, activeStep in
                     StepView(
                         activeStep: activeStep,
                         activeStepIndex: index,
@@ -51,6 +51,12 @@ struct ContentView: View {
             Text("No execution loaded")
                 .foregroundStyle(.secondary)
             Spacer()
+        }
+    }
+    
+    private func visibleActiveSteps(for execution: Execution) -> [(offset: Int, element: ActiveStep)] {
+        Array(execution.activeSteps.enumerated()).filter { _, activeStep in
+            activeStep.computedStep.step.visible
         }
     }
 }
@@ -107,6 +113,8 @@ struct StepView: View {
                 } else {
                     UnsupportedStepView(step: step)
                 }
+            case .compute:
+                UnsupportedStepView(step: step)
         }
     }
 }
