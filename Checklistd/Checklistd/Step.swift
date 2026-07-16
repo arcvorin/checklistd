@@ -12,11 +12,13 @@ enum StepType : String, Codable {
     case text
     case input
     case compute
+    case conditional
     var metatype: Step.Type {
         switch self {
             case .text: return TextStep.self
             case .input: return InputStep.self
             case .compute: return ComputeStep.self
+            case .conditional: return ConditionalStep.self
         }
         
     }
@@ -197,6 +199,46 @@ struct InputStep: Step {
     
     func getNextStep() -> String? {
         nextStepId
+    }
+}
+
+indirect enum ConditionalExpression: Codable {
+    case greaterThan(lhs: Float, rhs: Float, orEqual: Bool = false)
+    case lessThan(lhs: Float, rhs: Float, orEqual: Bool = false)
+    case numericEqual(lhs: Float, rhs: Float)
+    case stringEqual(lhs: String, rhs: String)
+    case dateEqual(lhs: Date, rhs: Date)
+    case stringIn(lhs: String, rhs: [String])
+    case dateIn(lhs: Date, rhs: [Date])
+    case numericIn(lhs: Float, rhs: [Float])
+    case and(expressions: [ConditionalExpression])
+    case or(expressions: [ConditionalExpression])
+    case negate(expression: ConditionalExpression)
+    case boolean(value: Bool)
+    case before(lhs: Date, rhs: Date, orEqual: Bool = false)
+    case after(lhs: Date, rhs: Date, orEqual: Bool = false)
+    case sameDay(lhs: Date, rhs: Date)
+    
+    func evaluate() -> Bool {
+        switch self {
+        case .boolean(value: let val):
+            return val
+        case .negate(expression: let expression):
+            return !expression.evaluate()
+        case .and(expressions: let expressions):
+            return expressions.allSatisfy({$0.evaluate()})
+        case .or(expressions: let expressions):
+            return expressions.contains(where: { $0.evaluate()})
+        }
+    }
+}
+
+struct ConditionalStep: Step {
+    var type = StepType.conditional
+    var metadata: StepMetadata
+    var condition: ConditionalExpression
+    func compute(variables: [String : Variable]) throws -> any Step {
+        self
     }
 }
 
