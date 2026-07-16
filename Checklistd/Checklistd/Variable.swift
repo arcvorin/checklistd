@@ -64,6 +64,22 @@ extension Variable {
                 nil
         }
     }
+    var booleanValue: Bool? {
+        switch self {
+        case .bool(bool: let value):
+            return value
+        default:
+            return nil
+        }
+    }
+    
+    var dateValue: Date? {
+        switch self {
+        case .date(date: let value):
+            return value
+        default: return nil
+        }
+    }
 }
 
 struct Parser {

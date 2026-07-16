@@ -141,6 +141,64 @@ enum ComputeError: Error {
     case invalidOption
 }
 
+struct NumericExpression: Codable, ExpressibleByStringLiteral {
+    var value: String
+    
+    init(_ value: String) {
+        self.value = value
+    }
+    
+    init(stringLiteral value: String) {
+        self.value = value
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.value = try container.decode(String.self)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+    
+    func variablesUsed() -> [String] {
+        let expression = Expression(value)
+        var seenVariables = Set<String>()
+        
+        return expression.symbols.compactMap { symbol -> String? in
+            guard case .variable(let name) = symbol else { return nil }
+            guard !seenVariables.contains(name) else { return nil }
+            seenVariables.insert(name)
+            return name
+        }
+    }
+    
+    func missingOrNonNumericVariables(in availableVariables: [String: Variable]) -> [String] {
+        variablesUsed().filter { variableName in
+            guard let variable = availableVariables[variableName] else { return true }
+            return variable.numericValue == nil
+        }
+    }
+    
+    func canEvaluate(variables: [String: Variable]) -> Bool {
+        missingOrNonNumericVariables(in: variables).isEmpty
+    }
+    
+    func evaluate(variables: [String: Variable]) throws -> Float {
+        guard canEvaluate(variables: variables) else {
+            throw ComputeError.variableStorageMismatch
+        }
+        
+        let constants = Dictionary(uniqueKeysWithValues: variablesUsed().map { variableName in
+            (variableName, variables[variableName]!.numericValue!)
+        })
+        let expression = Expression(value, constants: constants)
+        
+        return Float(try expression.evaluate())
+    }
+}
+
 struct TextStep: Step {
     var type = StepType.text
     var metadata: StepMetadata
@@ -203,32 +261,243 @@ struct InputStep: Step {
 }
 
 indirect enum ConditionalExpression: Codable {
-    case greaterThan(lhs: Float, rhs: Float, orEqual: Bool = false)
-    case lessThan(lhs: Float, rhs: Float, orEqual: Bool = false)
-    case numericEqual(lhs: Float, rhs: Float)
-    case stringEqual(lhs: String, rhs: String)
-    case dateEqual(lhs: Date, rhs: Date)
-    case stringIn(lhs: String, rhs: [String])
-    case dateIn(lhs: Date, rhs: [Date])
-    case numericIn(lhs: Float, rhs: [Float])
+    
+    enum VariableOrKindEnum: Codable {
+        case variable(name: String)
+        case string(value: String)
+        case date(value: Date)
+        case numeric(value: Float)
+        case numericExpression(value: NumericExpression)
+        case boolean(value: Bool)
+        
+        func stringValue(variables: [String: Variable]) throws -> String {
+            switch self {
+            case .variable(name: let name):
+                guard let value = variables[name] else {
+                    throw ConditionalExpressionError.variableNotFound(name: name)
+                }
+                guard value.storageMediumRepresentation() == .string else {
+                    throw ConditionalExpressionError.variableWrongType(name: name, expected: "string", actual: value.storageMediumRepresentation().rawValue)
+                }
+                return value.interpolatedValue
+            case .string(value: let value):
+                return value
+            case .boolean:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "boolean")
+            case .date:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "date")
+            case .numeric:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "numeric")
+            case .numericExpression:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "numericExpression")
+            }
+        }
+        
+        func dateValue(variables: [String: Variable]) throws -> Date {
+            switch self {
+            case .variable(name: let name):
+                guard let value = variables[name] else {
+                    throw ConditionalExpressionError.variableNotFound(name: name)
+                }
+                guard value.storageMediumRepresentation() == .date else {
+                    throw ConditionalExpressionError.variableWrongType(name: name, expected: "date", actual: value.storageMediumRepresentation().rawValue)
+                }
+                guard let dateValue = value.dateValue else {
+                    throw ConditionalExpressionError.variableUnexpectedValue(expected: "date")
+                }
+                return dateValue
+            case .date(value: let value):
+                return value
+            case .boolean:
+                throw ConditionalExpressionError.wrongType(expected: "date", actual: "boolean")
+            case .string:
+                throw ConditionalExpressionError.wrongType(expected: "date", actual: "string")
+            case .numeric:
+                throw ConditionalExpressionError.wrongType(expected: "date", actual: "numeric")
+            case .numericExpression:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "numericExpression")
+            }
+        }
+        
+        func numericValue(variables: [String: Variable]) throws -> Float {
+            switch self {
+                case .variable(name: let name):
+                guard let value = variables[name] else {
+                    throw ConditionalExpressionError.variableNotFound(name: name)
+                }
+                guard value.storageMediumRepresentation() == .float || value.storageMediumRepresentation() == .int else {
+                        throw ConditionalExpressionError.variableWrongType(name: name, expected: "numeric", actual: value.storageMediumRepresentation().rawValue)
+                }
+                guard let numericValue = value.numericValue else {
+                    throw ConditionalExpressionError.variableUnexpectedValue(expected: "numeric")
+                }
+                return Float(numericValue)
+                case .numeric(value: let value):
+                return value
+            case .numericExpression(value: let value):
+                return try value.evaluate(variables: variables)
+            case .boolean:
+                throw ConditionalExpressionError.wrongType(expected: "numeric", actual: "boolean")
+            case .string:
+                throw ConditionalExpressionError.wrongType(expected: "numeric", actual: "string")
+            case .date:
+                throw ConditionalExpressionError.wrongType(expected: "numeric", actual: "date")
+                
+            }
+        }
+        
+        func booleanValue(variables: [String: Variable]) throws -> Bool {
+            switch self {
+            case .variable(name: let name):
+                guard let value = variables[name] else {
+                    throw ConditionalExpressionError.variableNotFound(name: name)
+                }
+                guard value.storageMediumRepresentation() == .bool else {
+                    throw ConditionalExpressionError.variableWrongType(name: name, expected: "boolean", actual: value.storageMediumRepresentation().rawValue)
+                }
+                guard let booleanValue = value.booleanValue else {
+                    throw ConditionalExpressionError.variableUnexpectedValue(expected: "boolean")
+                }
+                return booleanValue
+            case .boolean(value: let value):
+                return value
+            case .date:
+                throw ConditionalExpressionError.wrongType(expected: "boolean", actual: "date")
+            case .numeric:
+                throw ConditionalExpressionError.wrongType(expected: "boolean", actual: "numeric")
+            case .string:
+                throw ConditionalExpressionError.wrongType(expected: "boolean", actual: "string")
+            case .numericExpression:
+                throw ConditionalExpressionError.variableWrongType(name: "variable", expected: "string", actual: "numericExpression")
+
+            }
+        }
+    }
+    
+    case greaterThan(type: String, lhs: VariableOrKindEnum, rhs: VariableOrKindEnum, orEqual: Bool = false)
+    case lessThan(type: String, lhs: VariableOrKindEnum, rhs: VariableOrKindEnum, orEqual: Bool = false)
+    case equal(type: String, lhs: VariableOrKindEnum, rhs: VariableOrKindEnum)
+    case valueIn(type: String, lhs: VariableOrKindEnum, rhs: [VariableOrKindEnum])
     case and(expressions: [ConditionalExpression])
     case or(expressions: [ConditionalExpression])
     case negate(expression: ConditionalExpression)
-    case boolean(value: Bool)
-    case before(lhs: Date, rhs: Date, orEqual: Bool = false)
-    case after(lhs: Date, rhs: Date, orEqual: Bool = false)
-    case sameDay(lhs: Date, rhs: Date)
+    case boolean(value: VariableOrKindEnum)
+    case before(lhs: VariableOrKindEnum, rhs: VariableOrKindEnum, orEqual: Bool = false)
+    case after(lhs: VariableOrKindEnum, rhs: VariableOrKindEnum, orEqual: Bool = false)
+    case sameDay(lhs: VariableOrKindEnum, rhs: VariableOrKindEnum)
     
-    func evaluate() -> Bool {
+    enum ConditionalExpressionError: Error {
+        case variableUnexpectedValue(expected: String)
+        case wrongType(expected: String, actual: String)
+        case variableNotFound(name: String)
+        case variableWrongType(name: String, expected: String, actual: String)
+        case unexpectedComparison(lhs: String, rhs: String)
+    }
+    
+    func evaluate(variables: [String: Variable]) throws -> Bool {
         switch self {
         case .boolean(value: let val):
-            return val
+            return try val.booleanValue(variables: variables)
         case .negate(expression: let expression):
-            return !expression.evaluate()
+            return !(try expression.evaluate(variables: variables))
         case .and(expressions: let expressions):
-            return expressions.allSatisfy({$0.evaluate()})
+            return try expressions.allSatisfy({try $0.evaluate(variables: variables)})
         case .or(expressions: let expressions):
-            return expressions.contains(where: { $0.evaluate()})
+            return try expressions.contains(where: { try $0.evaluate(variables: variables)})
+        case .greaterThan(type: let type, lhs: let lhs, rhs: let rhs, orEqual: let orEqual):
+            switch type {
+                case "string":
+                let a = try lhs.stringValue(variables: variables)
+                let b = try rhs.stringValue(variables: variables)
+                return a > b || (orEqual && a == b)
+                case "date":
+                let a = try lhs.dateValue(variables: variables)
+                let b = try rhs.dateValue(variables: variables)
+                return a > b || (orEqual && a == b)
+                case "boolean":
+                let a = try lhs.booleanValue(variables: variables)
+                let b = try rhs.booleanValue(variables: variables)
+                return !a && b || (orEqual && a == b)
+                case "numeric":
+                let a = try lhs.numericValue(variables: variables)
+                let b = try rhs.numericValue(variables: variables)
+                return a > b || (orEqual && a == b)
+                default:
+                throw ConditionalExpressionError.unexpectedComparison(lhs: "\(lhs)", rhs: "\(rhs)")
+            }
+        case .lessThan(type: let type, lhs: let lhs, rhs: let rhs, orEqual: let orEqual):
+            switch type {
+                case "string":
+                let a = try lhs.stringValue(variables: variables)
+                let b = try rhs.stringValue(variables: variables)
+                return a < b || (orEqual && a == b)
+                case "date":
+                let a = try lhs.dateValue(variables: variables)
+                let b = try rhs.dateValue(variables: variables)
+                return a < b || (orEqual && a == b)
+                case "boolean":
+                let a = try lhs.booleanValue(variables: variables)
+                let b = try rhs.booleanValue(variables: variables)
+                return !a && b || (orEqual && a == b)
+                case "numeric":
+                let a = try lhs.numericValue(variables: variables)
+                let b = try rhs.numericValue(variables: variables)
+                return a < b || (orEqual && a == b)
+                default:
+                throw ConditionalExpressionError.unexpectedComparison(lhs: "\(lhs)", rhs: "\(rhs)")
+            }
+        case .equal(type: let type, lhs: let lhs, rhs: let rhs):
+            switch type {
+                case "string":
+                let a = try lhs.stringValue(variables: variables)
+                let b = try rhs.stringValue(variables: variables)
+                return a == b
+                case "date":
+                let a = try lhs.dateValue(variables: variables)
+                let b = try rhs.dateValue(variables: variables)
+                return a == b
+                case "boolean":
+                let a = try lhs.booleanValue(variables: variables)
+                let b = try rhs.booleanValue(variables: variables)
+                return a == b
+                case "numeric":
+                let a = try lhs.numericValue(variables: variables)
+                let b = try rhs.numericValue(variables: variables)
+                return a == b
+                default:
+                throw ConditionalExpressionError.unexpectedComparison(lhs: "\(lhs)", rhs: "\(rhs)")
+            }
+        case .valueIn(type: let type, lhs: let lhs, rhs: let rhs):
+            switch type {
+                case "string":
+                let a = try lhs.stringValue(variables: variables)
+                let b = try rhs.map({try $0.stringValue(variables: variables)})
+                return b.contains(a)
+                case "date":
+                let a = try lhs.dateValue(variables: variables)
+                let b = try rhs.map({try $0.dateValue(variables: variables)})
+                return b.contains(a)
+                case "boolean":
+                let a = try lhs.booleanValue(variables: variables)
+                let b = try rhs.map({try $0.booleanValue(variables: variables)})
+                return b.contains(a)
+                case "numeric":
+                let a = try lhs.numericValue(variables: variables)
+                let b = try rhs.map({try $0.numericValue(variables: variables)})
+                return b.contains(a)
+                default:
+                throw ConditionalExpressionError.unexpectedComparison(lhs: "\(lhs)", rhs: "\(rhs)")
+            }
+        case .before(lhs: let lhs, rhs: let rhs, orEqual: let orEqual):
+            let lhsDate = try lhs.dateValue(variables: variables)
+            let rhsDate = try rhs.dateValue(variables: variables)
+            return lhsDate.timeIntervalSince(rhsDate) < 0 || (orEqual && lhsDate.timeIntervalSince(rhsDate) == 0)
+        case .after(lhs: let lhs, rhs: let rhs, orEqual: let orEqual):
+            let lhsDate = try lhs.dateValue(variables: variables)
+            let rhsDate = try rhs.dateValue(variables: variables)
+            return lhsDate.timeIntervalSince(rhsDate) > 0 || (orEqual && lhsDate.timeIntervalSince(rhsDate) == 0)
+        case .sameDay(lhs: let lhs, rhs: let rhs):
+            return Calendar.current.isDate(try lhs.dateValue(variables: variables), inSameDayAs: try rhs.dateValue(variables: variables))
         }
     }
 }
@@ -237,8 +506,20 @@ struct ConditionalStep: Step {
     var type = StepType.conditional
     var metadata: StepMetadata
     var condition: ConditionalExpression
+    var trueStepId: String
+    var falseStepId: String
+    var result: Bool?
     func compute(variables: [String : Variable]) throws -> any Step {
-        self
+        var copy = self
+        copy.result = try condition.evaluate(variables: variables)
+        return copy
+    }
+    
+    func getNextStep() -> String? {
+        guard let result = result else {
+            return nil
+        }
+        return result ? trueStepId : falseStepId
     }
 }
 
@@ -246,46 +527,25 @@ struct ComputeStep: Step {
     var type = StepType.compute
     var metadata: StepMetadata
     var key: String
-    var expression: String
+    var expression: NumericExpression
     var computedValue: Float?
     var nextStepId: String
     
     func expressionVariables() -> [String] {
-        let expr = Expression(expression)
-        var seenVariables = Set<String>()
-        
-        return expr.symbols.compactMap { symbol -> String? in
-            guard case .variable(let name) = symbol else { return nil }
-            guard !seenVariables.contains(name) else { return nil }
-            seenVariables.insert(name)
-            return name
-        }
+        expression.variablesUsed()
     }
     
     func missingOrNonNumericVariables(in availableVariables: [String: Variable]) -> [String] {
-        expressionVariables().filter { variableName in
-            guard let variable = availableVariables[variableName] else { return true }
-            return variable.numericValue == nil
-        }
+        expression.missingOrNonNumericVariables(in: availableVariables)
     }
     
     func canEvaluate(variables: [String: Variable]) -> Bool {
-        missingOrNonNumericVariables(in: variables).isEmpty
+        expression.canEvaluate(variables: variables)
     }
     
     func compute(variables: [String: Variable]) throws -> any Step {
         var copy = self
-        guard self.canEvaluate(variables: variables) else {
-            throw ComputeError.variableStorageMismatch
-        }
-        
-        let expressionVariables = expressionVariables()
-        let constants = Dictionary(uniqueKeysWithValues: expressionVariables.map { variableName in
-            (variableName, variables[variableName]!.numericValue!)
-        })
-        let expr = Expression(expression, constants: constants)
-        
-        copy.computedValue = Float(try expr.evaluate())
+        copy.computedValue = try expression.evaluate(variables: variables)
         return copy
     }
     

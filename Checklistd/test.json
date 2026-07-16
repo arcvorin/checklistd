@@ -115,6 +115,71 @@
                 },
                 "label": "Choose a fixed priority.",
                 "key": "priority",
+                "nextStepId": "planning-branch"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "planning-branch",
+                    "visible": false
+                },
+                "condition": {
+                    "or": {
+                        "expressions": [
+                            {
+                                "and": {
+                                    "expressions": [
+                                        {
+                                            "equal": {
+                                                "type": "string",
+                                                "lhs": { "variable": { "name": "priority" } },
+                                                "rhs": { "string": { "value": "High" } }
+                                            }
+                                        },
+                                        {
+                                            "greaterThan": {
+                                                "type": "numeric",
+                                                "lhs": { "numericExpression": { "value": "age + confidence * 2" } },
+                                                "rhs": { "numeric": { "value": 45 } },
+                                                "orEqual": true
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "greaterThan": {
+                                    "type": "numeric",
+                                    "lhs": { "variable": { "name": "profileScore" } },
+                                    "rhs": { "numeric": { "value": 80 } },
+                                    "orEqual": false
+                                }
+                            }
+                        ]
+                    }
+                },
+                "trueStepId": "escalated-plan-note",
+                "falseStepId": "standard-plan-note"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "escalated-plan-note" },
+                "message": "{{ name }}, this is treated as an escalated plan because {{ priority }} priority and score {{ profileScore }} need extra attention.",
+                "nextStepId": "role-input"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "standard-plan-note" },
+                "message": "{{ name }}, this looks like a standard plan with {{ priority }} priority and score {{ profileScore }}.",
                 "nextStepId": "role-input"
             }
         },
@@ -145,15 +210,15 @@
                 "metadata": { "id": "deadline-input" },
                 "inputKind": {
                     "date": {
-                        "start": 788936400,
-                        "end": 820386000
+                        "start": "2026-01-01",
+                        "end": "2026-12-31"
                     }
                 },
                 "label": "Pick a 2026 deadline for {{ priority }} priority work.",
                 "key": "deadline",
                 "value": {
                     "date": {
-                        "date": 795240000
+                        "date": "2026-03-15"
                     }
                 },
                 "nextStepId": "review-date-input"
@@ -167,9 +232,9 @@
                 "inputKind": {
                     "date": {
                         "options": [
-                            795240000,
-                            803620800,
-                            812001600
+                            "2026-03-15",
+                            "2026-06-20",
+                            "2026-09-25"
                         ]
                     }
                 },
@@ -177,9 +242,54 @@
                 "key": "reviewDate",
                 "value": {
                     "date": {
-                        "date": 795240000
+                        "date": "2026-03-15"
                     }
                 },
+                "nextStepId": "schedule-branch"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "schedule-branch",
+                    "visible": false
+                },
+                "condition": {
+                    "and": {
+                        "expressions": [
+                            {
+                                "before": {
+                                    "lhs": { "variable": { "name": "deadline" } },
+                                    "rhs": { "variable": { "name": "reviewDate" } },
+                                    "orEqual": true
+                                }
+                            },
+                            {
+                                "valueIn": {
+                                    "type": "date",
+                                    "lhs": { "variable": { "name": "reviewDate" } },
+                                    "rhs": [
+                                        { "date": { "value": "2026-03-15" } },
+                                        { "date": { "value": "2026-06-20" } },
+                                        { "date": { "value": "2026-09-25" } }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                "trueStepId": "date-summary",
+                "falseStepId": "schedule-warning"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "schedule-warning" },
+                "message": "Schedule check: review date {{ reviewDate }} is before the deadline {{ deadline }}, so this plan needs adjustment.",
                 "nextStepId": "date-summary"
             }
         },
@@ -207,6 +317,41 @@
                         "bool": false
                     }
                 },
+                "nextStepId": "age-disclosure-branch"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "age-disclosure-branch",
+                    "visible": false
+                },
+                "condition": {
+                    "boolean": {
+                        "value": { "variable": { "name": "includeAge" } }
+                    }
+                },
+                "trueStepId": "age-disclosure-note",
+                "falseStepId": "age-private-note"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "age-disclosure-note" },
+                "message": "Age disclosure is enabled, so {{ age }} will remain available in the final summary.",
+                "nextStepId": "color-input"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "age-private-note" },
+                "message": "Age disclosure is disabled, but the captured value is still available for conditional logic.",
                 "nextStepId": "color-input"
             }
         },
@@ -227,6 +372,54 @@
                 },
                 "label": "Choose a status color.",
                 "key": "color",
+                "nextStepId": "visual-review-branch"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "visual-review-branch",
+                    "visible": false
+                },
+                "condition": {
+                    "and": {
+                        "expressions": [
+                            {
+                                "valueIn": {
+                                    "type": "string",
+                                    "lhs": { "variable": { "name": "color" } },
+                                    "rhs": [
+                                        { "string": { "value": "Red" } },
+                                        { "string": { "value": "Blue" } }
+                                    ]
+                                }
+                            },
+                            {
+                                "negate": {
+                                    "expression": {
+                                        "equal": {
+                                            "type": "string",
+                                            "lhs": { "variable": { "name": "role" } },
+                                            "rhs": { "string": { "value": "Designer" } }
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "trueStepId": "visual-review-note",
+                "falseStepId": "final-summary"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "visual-review-note" },
+                "message": "{{ color }} was selected by a {{ role }}, so this run gets an extra visual review step.",
                 "nextStepId": "final-summary"
             }
         },

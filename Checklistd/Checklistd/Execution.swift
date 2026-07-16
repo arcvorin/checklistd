@@ -25,7 +25,7 @@ struct Execution {
               let currentStep = activeSteps.last,
               currentStep.isCompleted,
               currentStep.stepEnvelope.step.id == currentProgramCounter {
-            guard let nextStepId = currentStep.stepEnvelope.step.getNextStep() else {
+            guard let nextStepId = currentStep.computedStep.step.getNextStep() else {
                 isCompleted = true
                 return
             }
@@ -72,6 +72,10 @@ struct Execution {
         }
         
         currentStep = try currentStep.withCompletion(true, variables: variables)
+        if let inputStep = currentStep.computedStep.step as? InputStep,
+           let value = inputStep.value {
+            variables[inputStep.key] = value
+        }
         activeSteps.removeLast()
         activeSteps.append(currentStep)
         try self.run()

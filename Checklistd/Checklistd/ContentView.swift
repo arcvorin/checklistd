@@ -115,6 +115,8 @@ struct StepView: View {
                 }
             case .compute:
                 UnsupportedStepView(step: step)
+            case .conditional:
+            UnsupportedStepView(step: step)
         }
     }
 }
