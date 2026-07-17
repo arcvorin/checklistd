@@ -45,7 +45,12 @@ struct Execution {
             activeSteps.append(ActiveStep(stepEnvelope: programCounterStepEnvelope))
         }
         
-        activeSteps = try activeSteps.map({ try $0.compute(with: variables)})
+        activeSteps = try activeSteps.enumerated().map { index, activeStep in
+            try activeStep.compute(
+                with: variables,
+                updateInputValueFromVariables: index == activeSteps.index(before: activeSteps.endIndex)
+            )
+        }
         updateVariablesFromComputedSteps()
         
         if let currentStep = activeSteps.last, !currentStep.computedStep.step.visible {
@@ -100,7 +105,12 @@ struct Execution {
         activeSteps[index] = try activeSteps[index].withCompletion(false, variables: variables)
         programCounter = activeSteps[index].stepEnvelope.step.id
         isCompleted = false
-        activeSteps = try activeSteps.map({ try $0.compute(with: variables) })
+        activeSteps = try activeSteps.enumerated().map { index, activeStep in
+            try activeStep.compute(
+                with: variables,
+                updateInputValueFromVariables: index == activeSteps.index(before: activeSteps.endIndex)
+            )
+        }
     }
     
     mutating func setVariable(name: String, value: String) throws {
@@ -130,9 +140,17 @@ struct ActiveStep {
         self.computedStep = stepEnvelope
     }
     
-    func compute(with variables: [String: Variable]) throws -> ActiveStep {
+    func compute(with variables: [String: Variable], updateInputValueFromVariables: Bool) throws -> ActiveStep {
         var copy = self
         copy.computedStep = StepEnvelope(step: try stepEnvelope.step.compute(variables: variables))
+        
+        if !updateInputValueFromVariables,
+           var inputStep = copy.computedStep.step as? InputStep,
+           let previousInputStep = computedStep.step as? InputStep {
+            inputStep.value = previousInputStep.value
+            copy.computedStep = StepEnvelope(step: inputStep)
+        }
+        
         return copy
     }
     

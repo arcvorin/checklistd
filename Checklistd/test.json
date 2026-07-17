@@ -4,26 +4,303 @@
     "authorName": "Arc Vorin",
     "description": "Testing for science, you monsters!",
     "steps": [
+
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "metadata": { "id": "filtering-question" },
+                "inputKind": {
+                    "bool": {}
+                },
+                "label": "Did you do the sterile filtering?",
+                "key": "didFilter",
+                "value": {
+                    "bool": {
+                        "bool": false
+                    }
+                },
+                "nextStepId": "filtering-check"
+            }
+        },
         {
             "type": "text",
             "step": {
                 "type": "text",
-                "metadata": { "id": "intro" },
-                "message": "Welcome. This sample collects profile, planning, and review details.",
-                "nextStepId": "name-input"
+                "metadata": { "id": "filtering-reminder" },
+                "message": "Concentration must be measured after sterile filtering.",
+                "nextStepId": "filtering-question"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "filtering-check",
+                    "visible": false
+                },
+                "condition": {
+                    "boolean": {
+                        "value": { "variable": { "name": "didFilter" } }
+                    }
+                },
+                "trueStepId": "filtering-method-question",
+                "falseStepId": "filtering-reminder"
             }
         },
         {
             "type": "input",
             "step": {
                 "type": "input",
-                "metadata": { "id": "name-input" },
+                "metadata": { "id": "filtering-method-question" },
                 "inputKind": {
                     "text": {}
                 },
-                "label": "What is your name?",
-                "key": "name",
-                "nextStepId": "greeting"
+                "label": "Which filter did you use?",
+                "key": "filteringMethod",
+                "nextStepId": "concentration-text"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "concentration-text" },
+                "message": "We need the concentration of the particle stock from UV assay",
+                "nextStepId": "concentration-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "metadata": { "id": "concentration-input" },
+                "inputKind": {
+                    "float": {
+                        "start": 0.3,
+                        "end": 80
+                    }
+                },
+                "label": "[Fe]*DF [mg/mL] -> C (range: 0.3 to 80 mg/mL)",
+                "key": "C",
+                "nextStepId": "particle-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "metadata": { "id": "particle-input" },
+                "inputKind": {
+                    "float": {
+                        "start": 0.5,
+                        "end": 1500
+                    }
+                },
+                "label": "How many ugFe are to be injected? (range: 0.5 to 1500 ug)",
+                "key": "m",
+                "nextStepId": "dead-volume-input"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "metadata": { "id": "dead-volume-input" },
+                "inputKind": {
+                    "float": {
+                        "options": [
+                            0.7,
+                        ],
+                        "allowOther": true
+                    }
+                },
+                "label": "Choose the dead volume of the syringe? (uL)",
+                "key": "Vdead",
+                "value": {
+                    "float": {
+                        "float": 0.7
+                    }
+                },
+                "nextStepId": "effective-particle-volume-compute"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "effective-particle-volume-compute",
+                    "visible": false
+                },
+                "key": "VPeff",
+                "expression": "m / C",
+                "nextStepId": "total-volume-conditional"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "total-volume-conditional",
+                    "visible": false
+                },
+                "condition": {
+                    "greaterThan": {
+                        "type": "numeric",
+                        "lhs": { "variable": { "name": "VPeff" } },
+                        "rhs": { "numeric": { "value": 90 } },
+                        "orEqual": false
+                    }
+                },
+                "trueStepId": "set-vt-200",
+                "falseStepId": "set-vt-100"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "set-vt-200",
+                    "visible": false
+                },
+                "key": "VT",
+                "expression": "200 + Vdead",
+                "nextStepId": "set-vp"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "set-vt-100",
+                    "visible": false
+                },
+                "key": "VT",
+                "expression": "100 + Vdead",
+                "nextStepId": "set-vp"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "set-vp",
+                    "visible": false
+                },
+                "key": "VP",
+                "expression": "VPeff * (VT/(VT - Vdead))",
+                "nextStepId": "sonic-question"
+            }
+        },
+        {
+            "type": "input",
+            "step": {
+                "type": "input",
+                "metadata": { "id": "sonic-question" },
+                "inputKind": {
+                    "bool": {}
+                },
+                "label": "Did you sonicate the particle stock?",
+                "key": "didSonicate",
+                "value": {
+                    "bool": {
+                        "bool": false
+                    }
+                },
+                "nextStepId": "sonicate-check"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "sonication-reminder-text" },
+                "message": "Sonication of the particle stock is required.",
+                "nextStepId": "sonic-question"
+            }
+        },
+        {
+            "type": "conditional",
+            "step": {
+                "type": "conditional",
+                "metadata": {
+                    "id": "sonicate-check",
+                    "visible": false
+                },
+                "condition": {
+                    "boolean": {
+                        "value": { "variable": { "name": "didSonicate" } }
+                    }
+                },
+                "trueStepId": "pipette-step-particles",
+                "falseStepId": "sonication-reminder-text"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "pipette-step-particles" },
+                "message": "Pipette {{ VP }} uL from the particle stock",
+                "nextStepId": "set-vpbs"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "set-vpbs",
+                    "visible": false
+                },
+                "key": "VPBS",
+                "expression": "0.1 * VT",
+                "nextStepId": "pipette-step-vpbs"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "pipette-step-vpbs" },
+                "message": "Pipette {{ VPBS }} uL from the 10X PBS bottle",
+                "nextStepId": "set-vw"
+            }
+        },
+        {
+            "type": "compute",
+            "step": {
+                "type": "compute",
+                "metadata": {
+                    "id": "set-vw",
+                    "visible": false
+                },
+                "key": "VW",
+                "expression": "0.9 * VT - VP",
+                "nextStepId": "pipette-step-vw"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "pipette-step-vw" },
+                "message": "Pipette {{ VW }} uL of sterile filtered water",
+                "nextStepId": "step-vortex"
+            }
+        },
+        {
+            "type": "text",
+            "step": {
+                "type": "text",
+                "metadata": { "id": "step-vortex" },
+                "message": "Vortex the Eppendorf with the solution.",
             }
         },
         {
