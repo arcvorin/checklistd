@@ -100,6 +100,7 @@ struct StepView: View {
     let activeStepIndex: Int
     let isCurrentStep: Bool
     @Binding var execution: Execution?
+    @State private var isConfirmingReopen = false
     
     private var step: Step {
         activeStep.computedStep.step
@@ -112,23 +113,40 @@ struct StepView: View {
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            
             Button {
-                if activeStep.isCompleted {
-                    try? execution?.reopenStep(at: activeStepIndex)
-                } else if canCompleteCurrentStep {
+                if canCompleteCurrentStep {
                     try? execution?.completeStep()
                 }
             } label: {
                 Image(systemName: activeStep.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(activeStep.isCompleted ? .green : .secondary)
+                    .foregroundStyle(activeStep.isCompleted ? .clear : .secondary)
                     .font(.title3)
             }
             .buttonStyle(.plain)
             .disabled(!activeStep.isCompleted && !canCompleteCurrentStep)
             .padding(.top, 6)
-            
             stepContent
                 .opacity(activeStep.isCompleted ? 0.6 : 1)
+        }
+        .onTapGesture {
+            if activeStep.isCompleted {
+                isConfirmingReopen = true
+            } else if canCompleteCurrentStep {
+                try? execution?.completeStep()
+            }
+        }
+        .confirmationDialog(
+            "Go back to this step?",
+            isPresented: $isConfirmingReopen,
+            titleVisibility: .visible
+        ) {
+            Button("Go Back", role: .destructive) {
+                try? execution?.reopenStep(at: activeStepIndex)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove all later rows and return execution to this step.")
         }
     }
     
@@ -137,13 +155,13 @@ struct StepView: View {
         switch step.type {
             case .text:
                 if let textStep = step as? TextStep {
-                    TextStepView(step: textStep)
+                    TextStepView(step: textStep, isCompleted: activeStep.isCompleted)
                 } else {
                     UnsupportedStepView(step: step)
                 }
             case .input:
                 if let inputStep = step as? InputStep {
-                    InputStepView(step: inputStep, isCurrentStep: isCurrentStep, execution: $execution)
+                    InputStepView(step: inputStep, isCompleted: activeStep.isCompleted, isCurrentStep: isCurrentStep, execution: $execution)
                 } else {
                     UnsupportedStepView(step: step)
                 }
@@ -157,15 +175,18 @@ struct StepView: View {
 
 struct TextStepView: View {
     let step: TextStep
+    let isCompleted: Bool
     
     var body: some View {
         Text(step.message)
             .padding(.vertical, 4)
+            .strikethrough(isCompleted)
     }
 }
 
 struct InputStepView: View {
     let step: InputStep
+    let isCompleted: Bool
     let isCurrentStep: Bool
     @Binding var execution: Execution?
     
@@ -173,6 +194,7 @@ struct InputStepView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(step.label ?? step.name)
                 .font(.headline)
+                .strikethrough(isCompleted)
             inputControl
                 .disabled(!isCurrentStep)
         }
