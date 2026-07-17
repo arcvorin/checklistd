@@ -37,15 +37,25 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
-                List(visibleActiveSteps(for: execution), id: \.offset) { index, activeStep in
-                    StepView(
-                        activeStep: activeStep,
-                        activeStepIndex: index,
-                        isCurrentStep: index == execution.activeSteps.indices.last && !execution.isCompleted,
-                        execution: $execution
-                    )
+                let visibleSteps = visibleActiveSteps(for: execution)
+                
+                ScrollViewReader { proxy in
+                    List(visibleSteps, id: \.offset) { index, activeStep in
+                        StepView(
+                            activeStep: activeStep,
+                            activeStepIndex: index,
+                            isCurrentStep: index == execution.activeSteps.indices.last && !execution.isCompleted,
+                            execution: $execution
+                        )
+                    }
+                    .listStyle(.plain)
+                    .onAppear {
+                        scrollToBottom(proxy: proxy, visibleSteps: visibleSteps, animated: false)
+                    }
+                    .onChange(of: visibleStepSignature(for: execution)) {
+                        scrollToBottom(proxy: proxy, visibleSteps: visibleSteps, animated: true)
+                    }
                 }
-                .listStyle(.plain)
             }
         } else {
             Text("No execution loaded")
@@ -57,6 +67,30 @@ struct ContentView: View {
     private func visibleActiveSteps(for execution: Execution) -> [(offset: Int, element: ActiveStep)] {
         Array(execution.activeSteps.enumerated()).filter { _, activeStep in
             activeStep.computedStep.step.visible
+        }
+    }
+    
+    private func visibleStepSignature(for execution: Execution) -> String {
+        visibleActiveSteps(for: execution)
+            .map { index, activeStep in
+                "\(index):\(activeStep.computedStep.step.id):\(activeStep.isCompleted)"
+            }
+            .joined(separator: "|")
+    }
+    
+    private func scrollToBottom(
+        proxy: ScrollViewProxy,
+        visibleSteps: [(offset: Int, element: ActiveStep)],
+        animated: Bool
+    ) {
+        guard let lastStepId = visibleSteps.last?.offset else { return }
+        
+        if animated {
+            withAnimation {
+                proxy.scrollTo(lastStepId, anchor: .bottom)
+            }
+        } else {
+            proxy.scrollTo(lastStepId, anchor: .bottom)
         }
     }
 }
