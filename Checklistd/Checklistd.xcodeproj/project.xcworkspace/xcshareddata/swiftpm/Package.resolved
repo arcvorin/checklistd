@@ -1,5 +1,5 @@
 {
-  "originHash" : "8b598035d4a4d6bdfa0128bb58f37077db0e810460d41e57990545585f8e7b73",
+  "originHash" : "d9a456081ff7298a76e3a7ec23b4a0a3605d0f478e2bff4d0baa66c7ecca6d94",
   "pins" : [
     {
       "identity" : "expression",
@@ -8,6 +8,51 @@
       "state" : {
         "revision" : "95ffe4c352e456cede933d9910d25b9c84039d1b",
         "version" : "0.13.9"
+      }
+    },
+    {
+      "identity" : "keychain-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/evgenyneu/keychain-swift.git",
+      "state" : {
+        "revision" : "5e1b02b6a9dac2a759a1d5dbc175c86bd192a608",
+        "version" : "24.0.0"
+      }
+    },
+    {
+      "identity" : "libgit2",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ibrahimcetin/libgit2.git",
+      "state" : {
+        "revision" : "52287b0914f300f916b58fec80e13d8dd8f6824f",
+        "version" : "1.9.2"
+      }
+    },
+    {
+      "identity" : "octokit.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nerdishbynature/octokit.swift",
+      "state" : {
+        "revision" : "cd108b387782d8509e64e298cf4800dc47fc40ae",
+        "version" : "0.14.0"
+      }
+    },
+    {
+      "identity" : "requestkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nerdishbynature/RequestKit.git",
+      "state" : {
+        "revision" : "9d45c9aacc1d46c87def44dd120d9c71dab3c788",
+        "version" : "3.4.0"
+      }
+    },
+    {
+      "identity" : "swiftgitx",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ibrahimcetin/SwiftGitX.git",
+      "state" : {
+        "revision" : "fcfb71e3dcbbaa70d120b98b7477ce173074aec3",
+        "version" : "0.4.0"
       }
     },
     {

@@ -10,6 +10,9 @@
 		1A00584430042E1600A2CCE8 /* VersionedCodable in Frameworks */ = {isa = PBXBuildFile; productRef = 1A00584330042E1600A2CCE8 /* VersionedCodable */; };
 		1A0058503005736B00A2CCE8 /* test.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A00584F3005736100A2CCE8 /* test.json */; };
 		1A005853300590BD00A2CCE8 /* Expression in Frameworks */ = {isa = PBXBuildFile; productRef = 1A005852300590BD00A2CCE8 /* Expression */; };
+		1A4F843A300AC9ED00CEE6D1 /* SwiftGitX in Frameworks */ = {isa = PBXBuildFile; productRef = 1A4F8439300AC9ED00CEE6D1 /* SwiftGitX */; };
+		1A4F843D300ADA5A00CEE6D1 /* KeychainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 1A4F843C300ADA5A00CEE6D1 /* KeychainSwift */; };
+		1A4F8446300AE93E00CEE6D1 /* OctoKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1A4F8445300AE93E00CEE6D1 /* OctoKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,7 +63,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A005853300590BD00A2CCE8 /* Expression in Frameworks */,
+				1A4F8446300AE93E00CEE6D1 /* OctoKit in Frameworks */,
 				1A00584430042E1600A2CCE8 /* VersionedCodable in Frameworks */,
+				1A4F843D300ADA5A00CEE6D1 /* KeychainSwift in Frameworks */,
+				1A4F843A300AC9ED00CEE6D1 /* SwiftGitX in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -124,6 +130,9 @@
 			packageProductDependencies = (
 				1A00584330042E1600A2CCE8 /* VersionedCodable */,
 				1A005852300590BD00A2CCE8 /* Expression */,
+				1A4F8439300AC9ED00CEE6D1 /* SwiftGitX */,
+				1A4F843C300ADA5A00CEE6D1 /* KeychainSwift */,
+				1A4F8445300AE93E00CEE6D1 /* OctoKit */,
 			);
 			productName = Checklistd;
 			productReference = 1A1BFA3430042A8900BC447B /* Checklistd.app */;
@@ -210,6 +219,9 @@
 			packageReferences = (
 				1A00584230042E1600A2CCE8 /* XCRemoteSwiftPackageReference "VersionedCodable" */,
 				1A005851300590BD00A2CCE8 /* XCRemoteSwiftPackageReference "Expression" */,
+				1A4F8438300AC9ED00CEE6D1 /* XCRemoteSwiftPackageReference "SwiftGitX" */,
+				1A4F843B300ADA5A00CEE6D1 /* XCRemoteSwiftPackageReference "keychain-swift" */,
+				1A4F8444300AE93E00CEE6D1 /* XCRemoteSwiftPackageReference "octokit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A1BFA3530042A8900BC447B /* Products */;
@@ -407,6 +419,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Checklistd/Checklistd.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D5YR5XE2X6;
@@ -451,6 +464,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Checklistd/Checklistd.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D5YR5XE2X6;
@@ -650,6 +664,30 @@
 				minimumVersion = 0.13.9;
 			};
 		};
+		1A4F8438300AC9ED00CEE6D1 /* XCRemoteSwiftPackageReference "SwiftGitX" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ibrahimcetin/SwiftGitX.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.0;
+			};
+		};
+		1A4F843B300ADA5A00CEE6D1 /* XCRemoteSwiftPackageReference "keychain-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/evgenyneu/keychain-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.0.0;
+			};
+		};
+		1A4F8444300AE93E00CEE6D1 /* XCRemoteSwiftPackageReference "octokit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/nerdishbynature/octokit.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.14.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -662,6 +700,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1A005851300590BD00A2CCE8 /* XCRemoteSwiftPackageReference "Expression" */;
 			productName = Expression;
+		};
+		1A4F8439300AC9ED00CEE6D1 /* SwiftGitX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A4F8438300AC9ED00CEE6D1 /* XCRemoteSwiftPackageReference "SwiftGitX" */;
+			productName = SwiftGitX;
+		};
+		1A4F843C300ADA5A00CEE6D1 /* KeychainSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A4F843B300ADA5A00CEE6D1 /* XCRemoteSwiftPackageReference "keychain-swift" */;
+			productName = KeychainSwift;
+		};
+		1A4F8445300AE93E00CEE6D1 /* OctoKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A4F8444300AE93E00CEE6D1 /* XCRemoteSwiftPackageReference "octokit" */;
+			productName = OctoKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

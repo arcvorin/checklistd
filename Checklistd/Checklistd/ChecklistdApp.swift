@@ -11,10 +11,10 @@ import VersionedCodable
 @main
 struct ChecklistdApp: App {
     @State private var execution = Self.loadSampleExecution()
-    
+    @State private var sync = Sync()
     var body: some Scene {
         WindowGroup {
-            ContentView(execution: $execution)
+            LoginView(sync: $sync)
         }
     }
     
