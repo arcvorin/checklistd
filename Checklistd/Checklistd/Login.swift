@@ -30,6 +30,10 @@ struct LoginView: View {
     @State private var isCreatingExecution = false
     @State private var isPushingExecution = false
     @State private var statusMessage: String? = nil
+    @State private var isShowingExecutionNamePrompt = false
+    @State private var newExecutionName = ""
+    @State private var pendingExecutionProgram: Program?
+    @State private var pendingExecutionRecipeRepositoryURL: String?
     
     private enum AppTab {
         case setup
@@ -116,6 +120,17 @@ struct LoginView: View {
         }
         .sheet(isPresented: $isShowingExecutionPicker) {
             executionPickerSheet
+        }
+        .alert("Name execution", isPresented: $isShowingExecutionNamePrompt) {
+            TextField("Execution name", text: $newExecutionName)
+            Button("Create") {
+                createPendingExecution()
+            }
+            Button("Cancel", role: .cancel) {
+                clearPendingExecution()
+            }
+        } message: {
+            Text("Give this execution a custom name.")
         }
         .overlay(alignment: .bottom) {
             if let statusMessage {
@@ -340,6 +355,31 @@ struct LoginView: View {
     }
     
     private func createExecution(for program: Program, recipeRepositoryURL: String) {
+        pendingExecutionProgram = program
+        pendingExecutionRecipeRepositoryURL = recipeRepositoryURL
+        newExecutionName = ""
+        isShowingExecutionNamePrompt = true
+    }
+    
+    private func createPendingExecution() {
+        guard let program = pendingExecutionProgram,
+              let recipeRepositoryURL = pendingExecutionRecipeRepositoryURL else {
+            clearPendingExecution()
+            return
+        }
+        
+        let executionName = newExecutionName
+        clearPendingExecution()
+        createExecution(for: program, recipeRepositoryURL: recipeRepositoryURL, name: executionName)
+    }
+    
+    private func clearPendingExecution() {
+        pendingExecutionProgram = nil
+        pendingExecutionRecipeRepositoryURL = nil
+        newExecutionName = ""
+    }
+    
+    private func createExecution(for program: Program, recipeRepositoryURL: String, name: String) {
         let creationID = UUID().uuidString
         isCreatingExecution = true
         statusMessage = "Creating execution..."
@@ -351,7 +391,8 @@ struct LoginView: View {
             do {
                 let file = try await sync.createExecution(
                     for: program,
-                    recipeRepositoryURL: recipeRepositoryURL
+                    recipeRepositoryURL: recipeRepositoryURL,
+                    name: name
                 )
                 let repositories = refreshExecutionRepositories()
                 await MainActor.run {

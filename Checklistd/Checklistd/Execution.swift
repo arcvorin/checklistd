@@ -9,6 +9,11 @@ import Foundation
 
 struct Execution: Codable {
     let id: String
+    var name: String
+    let createdByName: String
+    let createdByEmail: String
+    let createdAt: Date
+    var updatedAt: Date
     let program: Program
     var programCounter: String?
     
@@ -18,6 +23,11 @@ struct Execution: Codable {
     
     init(
         id: String = UUID().uuidString,
+        name: String = "",
+        createdByName: String = "",
+        createdByEmail: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date? = nil,
         program: Program,
         programCounter: String? = nil,
         variables: [String: Variable] = [:],
@@ -25,11 +35,61 @@ struct Execution: Codable {
         isCompleted: Bool = false
     ) {
         self.id = id
+        self.name = name
+        self.createdByName = createdByName
+        self.createdByEmail = createdByEmail
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt ?? createdAt
         self.program = program
         self.programCounter = programCounter ?? program.steps.first?.step.id
         self.variables = variables
         self.activeSteps = activeSteps
         self.isCompleted = isCompleted
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case createdByName
+        case createdByEmail
+        case createdAt
+        case updatedAt
+        case program
+        case programCounter
+        case variables
+        case activeSteps
+        case isCompleted
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.createdByName = try container.decode(String.self, forKey: .createdByName)
+        self.createdByEmail = try container.decode(String.self, forKey: .createdByEmail)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        self.program = try container.decode(Program.self, forKey: .program)
+        self.programCounter = try container.decodeIfPresent(String.self, forKey: .programCounter)
+        self.variables = try container.decodeIfPresent([String: Variable].self, forKey: .variables) ?? [:]
+        self.activeSteps = try container.decodeIfPresent([ActiveStep].self, forKey: .activeSteps) ?? []
+        self.isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(createdByName, forKey: .createdByName)
+        try container.encode(createdByEmail, forKey: .createdByEmail)
+        try container.encode(ExecutionTimestampFormatter.string(from: createdAt), forKey: .createdAt)
+        try container.encode(ExecutionTimestampFormatter.string(from: updatedAt), forKey: .updatedAt)
+        try container.encode(program, forKey: .program)
+        try container.encodeIfPresent(programCounter, forKey: .programCounter)
+        try container.encode(variables, forKey: .variables)
+        try container.encode(activeSteps, forKey: .activeSteps)
+        try container.encode(isCompleted, forKey: .isCompleted)
     }
     
     enum ExecutionError: Error {
@@ -144,6 +204,18 @@ struct Execution: Codable {
     }
     //var history: [ExecutionAction] = []
     
+}
+
+private enum ExecutionTimestampFormatter {
+    static func string(from date: Date) -> String {
+        formatter.string(from: date)
+    }
+    
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 struct ActiveStep: Codable {

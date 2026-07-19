@@ -166,6 +166,49 @@ struct ChecklistdTests {
         #expect(json.contains(#""value":true"#))
     }
     
+    @Test func executionEncodingIncludesRequiredAuditMetadata() throws {
+        let program = try decodeBundledSampleProgram()
+        let createdAt = try Self.decodeDate("2026-07-19T12:00:00Z")
+        let updatedAt = try Self.decodeDate("2026-07-19T12:30:00Z")
+        let execution = Execution(
+            id: "execution-id",
+            name: "Morning prep",
+            createdByName: "Arc Vorin",
+            createdByEmail: "arc@example.com",
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            program: program
+        )
+        
+        let data = try JSONEncoder.checklistd.encode(execution)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        
+        #expect(object["name"] as? String == "Morning prep")
+        #expect(object["createdByName"] as? String == "Arc Vorin")
+        #expect(object["createdByEmail"] as? String == "arc@example.com")
+        #expect((object["createdAt"] as? String)?.contains("T12:00:00") == true)
+        #expect((object["updatedAt"] as? String)?.contains("T12:30:00") == true)
+        
+        let decoded = try JSONDecoder.checklistd.decode(Execution.self, from: data)
+        #expect(decoded.name == "Morning prep")
+        #expect(decoded.createdByName == "Arc Vorin")
+        #expect(decoded.createdByEmail == "arc@example.com")
+        #expect(decoded.createdAt == createdAt)
+        #expect(decoded.updatedAt == updatedAt)
+    }
+    
+    @Test func executionAuditMetadataIsRequired() throws {
+        let program = try decodeBundledSampleProgram()
+        let data = try JSONEncoder.checklistd.encode(Execution(id: "missing-audit", program: program))
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "createdByName")
+        let missingMetadataData = try JSONSerialization.data(withJSONObject: object)
+        
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.checklistd.decode(Execution.self, from: missingMetadataData)
+        }
+    }
+    
     @Test func legacyStepWrapperDoesNotDecode() throws {
         let legacyJSON = Data(
             """

@@ -32,7 +32,13 @@ struct ExecutionDetailView: View {
                 }
             )
         )
-        .navigationTitle(execution?.program.title ?? "Execution")
+        .navigationTitle(navigationTitle)
         .checklistdInlineNavigationTitle()
+    }
+    
+    private var navigationTitle: String {
+        guard let execution else { return "Execution" }
+        let executionName = execution.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return executionName.isEmpty ? execution.program.title : executionName
     }
 }

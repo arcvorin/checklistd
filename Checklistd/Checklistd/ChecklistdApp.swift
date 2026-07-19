@@ -44,7 +44,7 @@ extension JSONDecoder {
             let container = try decoder.singleValueContainer()
             let value = try container.decode(String.self)
             
-            if let date = DateFormatter.checklistdFullDate.date(from: value) {
+            if let date = ISO8601DateFormatter.checklistdDateTime.date(from: value) {
                 return date
             }
             
@@ -52,7 +52,7 @@ extension JSONDecoder {
                 return date
             }
             
-            if let date = ISO8601DateFormatter.checklistdDateTime.date(from: value) {
+            if let date = DateFormatter.checklistdFullDate.date(from: value) {
                 return date
             }
             
@@ -82,6 +82,7 @@ private extension DateFormatter {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
         return formatter
     }()
 }

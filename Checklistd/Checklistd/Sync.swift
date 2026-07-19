@@ -55,6 +55,7 @@ class Sync {
     enum SyncError: Error {
         case missingExecutionPair
         case missingExecutionRepository
+        case missingGitCommitIdentity
     }
     
     private lazy var keychain = KeychainSwift()
@@ -258,7 +259,11 @@ class Sync {
         return repos
     }
     
-    func createExecution(for program: Program, recipeRepositoryURL: String) async throws -> ExecutionFileDetails {
+    func createExecution(
+        for program: Program,
+        recipeRepositoryURL: String,
+        name: String
+    ) async throws -> ExecutionFileDetails {
         guard let pair = syncPairs().first(where: { $0.recipeURL == recipeRepositoryURL }) else {
             throw SyncError.missingExecutionPair
         }
@@ -272,10 +277,25 @@ class Sync {
             throw SyncError.missingExecutionRepository
         }
         
-        var execution = Execution(program: program)
+        guard let identity = gitCommitIdentity() else {
+            throw SyncError.missingGitCommitIdentity
+        }
+        
+        let createdAt = Date()
+        var execution = Execution(
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdByName: identity.name,
+            createdByEmail: identity.email,
+            createdAt: createdAt,
+            updatedAt: createdAt,
+            program: program
+        )
         try execution.run()
         
-        let fileURL = executionRepoDir.appendingPathComponent(executionFileName(for: program), isDirectory: false)
+        let fileURL = executionRepoDir.appendingPathComponent(
+            executionFileName(for: program, executionName: execution.name),
+            isDirectory: false
+        )
         try write(execution: execution, to: fileURL)
         let details = ExecutionFileDetails(
             repoURL: pair.executionURL,
@@ -290,7 +310,9 @@ class Sync {
     
     func saveExecution(_ execution: Execution, to fileURL: URL) async {
         do {
-            try write(execution: execution, to: fileURL)
+            var updatedExecution = execution
+            updatedExecution.updatedAt = Date()
+            try write(execution: updatedExecution, to: fileURL)
             _ = listExecutions()
             Task {
                 await pushRepos()
@@ -305,14 +327,20 @@ class Sync {
         try data.write(to: fileURL, options: [.atomic])
     }
     
-    private func executionFileName(for program: Program) -> String {
+    private func executionFileName(for program: Program, executionName: String) -> String {
         let timestamp = DateFormatter.checklistdExecutionFileTimestamp.string(from: Date())
         let timestampHash = String(sha256Hex(of: timestamp).prefix(8))
-        let userName = safeFileName(gitCommitName())
-        return "\(userName)-\(timestamp)-\(timestampHash).json"
+        let userName = safeFileName(gitCommitName(), fallback: "user")
+        let safeExecutionName = safeFileName(executionName, fallback: "")
+        
+        guard !safeExecutionName.isEmpty else {
+            return "\(userName)-\(timestamp)-\(timestampHash).json"
+        }
+        
+        return "\(userName)-\(safeExecutionName)-\(timestamp)-\(timestampHash).json"
     }
     
-    private func safeFileName(_ string: String) -> String {
+    private func safeFileName(_ string: String, fallback: String = "user") -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let scalars = string
             .lowercased()
@@ -321,7 +349,7 @@ class Sync {
         let collapsed = String(scalars)
             .split(separator: "-", omittingEmptySubsequences: true)
             .joined(separator: "-")
-        return collapsed.isEmpty ? "user" : collapsed
+        return collapsed.isEmpty ? fallback : collapsed
     }
     
     func pushRepos() async {
