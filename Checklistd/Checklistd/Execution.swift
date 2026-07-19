@@ -7,14 +7,30 @@
 
 import Foundation
 
-struct Execution {
-    let id = UUID().uuidString
+struct Execution: Codable {
+    let id: String
     let program: Program
-    lazy var programCounter: String? = program.steps.first?.step.id
+    var programCounter: String?
     
     var variables = [String: Variable]()
     var activeSteps: [ActiveStep] = []
     var isCompleted: Bool = false
+    
+    init(
+        id: String = UUID().uuidString,
+        program: Program,
+        programCounter: String? = nil,
+        variables: [String: Variable] = [:],
+        activeSteps: [ActiveStep] = [],
+        isCompleted: Bool = false
+    ) {
+        self.id = id
+        self.program = program
+        self.programCounter = programCounter ?? program.steps.first?.step.id
+        self.variables = variables
+        self.activeSteps = activeSteps
+        self.isCompleted = isCompleted
+    }
     
     enum ExecutionError: Error {
         case stepNotFound
@@ -130,7 +146,7 @@ struct Execution {
     
 }
 
-struct ActiveStep {
+struct ActiveStep: Codable {
     let stepEnvelope: StepEnvelope
     var computedStep: StepEnvelope
     var isCompleted: Bool = false

@@ -22,8 +22,8 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(execution?.program.authorName ?? "")
                 .font(.callout)
-            Text(execution?.program.title ?? "No program loaded")
-                .font(.title)
+//            Text(execution?.program.title ?? "No program loaded")
+//                .font(.title)
             Text(execution?.program.description ?? "")
                 .font(.caption)
         }
@@ -207,15 +207,15 @@ struct InputStepView: View {
             case .text:
                 TextField("Value", text: textBinding)
                     .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.sentences)
+                    .checklistdTextInputAutocapitalization()
             case .int:
                 TextField("Value", text: intBinding)
                     .textFieldStyle(.roundedBorder)
-                    .keyboardType(.numberPad)
+                    .checklistdKeyboardType(.numberPad)
             case .float:
                 TextField("Value", text: floatBinding)
                     .textFieldStyle(.roundedBorder)
-                    .keyboardType(.decimalPad)
+                    .checklistdKeyboardType(.decimalPad)
             case .bool:
                 Toggle("Value", isOn: boolBinding)
             case .date:
@@ -366,6 +366,36 @@ struct InputStepView: View {
         guard var currentExecution = execution else { return }
         try? currentExecution.clearVariable(name: step.key)
         execution = currentExecution
+    }
+}
+
+private enum ChecklistdKeyboardType {
+    case numberPad
+    case decimalPad
+}
+
+private extension View {
+    @ViewBuilder
+    func checklistdTextInputAutocapitalization() -> some View {
+        #if os(iOS)
+        textInputAutocapitalization(.sentences)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func checklistdKeyboardType(_ keyboardType: ChecklistdKeyboardType) -> some View {
+        #if os(iOS)
+        switch keyboardType {
+        case .numberPad:
+            self.keyboardType(.numberPad)
+        case .decimalPad:
+            self.keyboardType(.decimalPad)
+        }
+        #else
+        self
+        #endif
     }
 }
 

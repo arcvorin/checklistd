@@ -7,89 +7,439 @@
 
 import SwiftUI
 import OctoKit
+
 struct LoginView: View {
     @State var newPAT: String = ""
+    @State var gitCommitName: String = ""
+    @State var gitCommitEmail: String = ""
     @Binding var sync: Sync
     @State var repos: [OctoKit.Repository] = []
-    @State var syncedRapos: [Sync.SyncRepo] = []
+    @State var pairs: [Sync.RecipeExecutionPair] = []
+    @State var recipeRepositories: [Sync.RecipeRepositoryDetails] = []
+    @State var executionRepositories: [Sync.ExecutionRepositoryDetails] = []
     @State var isAuthenticated = false
+    @State private var selectedTab: AppTab = .setup
+    @State private var executionPath: [URL] = []
+    @State private var setupStateVersion = 0
+    @State private var isContinuing = false
+    @State private var isShowingExecutionPicker: Bool = false
+    @State private var selectedRecipeRepo: OctoKit.Repository? = nil
+    @State private var selectedExecutionRepoURL: String = ""
+    
+    private enum AppTab {
+        case setup
+        case recipes
+        case executions
+    }
+
     var body: some View {
-        Text("Authenticated: \(isAuthenticated)")
-        HStack {
-            TextField("PAT", text: $newPAT)
-                .onSubmit {
-                    _ = sync.setPAT(newPAT)
-                    isAuthenticated = !newPAT.isEmpty
-                    newPAT = ""
+        Group {
+            if isSetupComplete {
+                TabView(selection: $selectedTab) {
+                    NavigationStack {
+                        setupView
+                            .navigationTitle("Setup")
+                    }
+                    .tabItem {
+                        Label("Setup", systemImage: "gearshape")
+                    }
+                    .tag(AppTab.setup)
+                    
+                    NavigationStack {
+                        RecipeRepositoryListView(
+                            repositories: recipeRepositories,
+                            createExecution: createExecution
+                        )
+                        .navigationTitle("Recipe Repos")
+                    }
+                    .tabItem {
+                        Label("Recipes", systemImage: "list.bullet.rectangle")
+                    }
+                    .tag(AppTab.recipes)
+                    
+                    NavigationStack(path: $executionPath) {
+                        ExecutionRepositoryListView(repositories: executionRepositories)
+                            .navigationTitle("Execution Repos")
+                            .navigationDestination(for: URL.self) { fileURL in
+                                if let file = executionFile(for: fileURL) {
+                                    ExecutionDetailView(file: file, sync: sync)
+                                } else {
+                                    Text("Execution not found")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                    }
+                    .tabItem {
+                        Label("Executions", systemImage: "checklist")
+                    }
+                    .tag(AppTab.executions)
+                }
+            } else {
+                NavigationStack {
+                    setupView
+                        .navigationTitle("Setup")
+                }
+            }
+        }
+        .onAppear {
+            loadAuthenticatedState()
+        }
+        .sheet(isPresented: $isShowingExecutionPicker) {
+            executionPickerSheet
+        }
+    }
+    
+    private var setupView: some View {
+        VStack {
+            Text(isSetupComplete ? "Setup complete" : "Setup incomplete")
+            HStack {
+                TextField("PAT", text: $newPAT)
+                    .onSubmit {
+                        saveSetup()
+                    }
+                    .padding()
+                Button(isAuthenticated ? "Update" : "Submit") {
+                    saveSetup()
                 }
                 .padding()
-                .onAppear {
-                    if (sync.isAuthenticated()) {
-                        isAuthenticated = true
-                        Task {
-                            guard let repos = await sync.listRepos() else {
-                                return
-                            }
-                            self.repos = repos
-                            self.syncedRapos = sync.repos
-                        }
-                    } else {
-                        isAuthenticated = false
-                    }
+            }
+            TextField("Git commit name", text: $gitCommitName)
+                .padding(.horizontal)
+                .textFieldStyle(.roundedBorder)
+            TextField("Git commit email", text: $gitCommitEmail)
+                .padding(.horizontal)
+                .textFieldStyle(.roundedBorder)
+            List(repos, id: \.id) { repo in
+                repoPairingRow(repo)
+            }
+            Spacer()
+            Button(syncButtonTitle) {
+                if isSetupComplete {
+                    continueToRecipes()
+                } else {
+                    saveSetup()
                 }
-            Button(isAuthenticated ? "Update" : "Submit") {
-                _ = sync.setPAT(newPAT)
-                isAuthenticated = !newPAT.isEmpty
-                newPAT = ""
-
-                Task {
-                    guard let repos = await sync.listRepos() else {
-                        self.syncedRapos = []
-                        return self.repos = []
-                    }
-                    self.repos = repos
-                    self.syncedRapos = sync.repos
-                }
-            }.padding()
+            }
+            .disabled(isContinuing)
+            .padding()
         }
-        VStack {
-            List(repos, id: \.id) { aRepo in
-                HStack {
-                    Text(aRepo.name ?? "No Name")
-                    Spacer()
-                    Text(syncedRapos.filter { syncRepo in
-                        syncRepo.url == aRepo.cloneURL
-                    }.map { $0.kind.rawValue }.joined(separator: ", "))
-                }.onTapGesture {
-                    let kinds = syncedRapos.filter { syncRepo in
-                        syncRepo.url == aRepo.cloneURL
-                    }.map { $0.kind }
-                    if kinds.contains(.recipe) && kinds.contains(.execution) {
-                        sync.untrackRepo(repository: aRepo)
-                        self.syncedRapos = sync.repos
-                        return
-                    }
-                    if kinds.isEmpty {
-                        sync.trackRepo(repository: aRepo, as: .recipe)
-                        self.syncedRapos = sync.repos
-                        return
-                    }
-                    if kinds.contains(.recipe) {
-                        sync.untrackRepo(repository: aRepo)
-                        sync.trackRepo(repository: aRepo, as: .execution)
-                        self.syncedRapos = sync.repos
-                        return
-                    }
-                    if kinds.contains(.execution) {
-                        sync.untrackRepo(repository: aRepo)
-                        sync.trackRepo(repository: aRepo, as: .recipe)
-                        sync.trackRepo(repository: aRepo, as: .execution)
-                        self.syncedRapos = sync.repos
-                        return
+    }
+    
+    private func repoPairingRow(_ repo: OctoKit.Repository) -> some View {
+        HStack {
+            Text(repo.name ?? "No Name")
+            Spacer()
+            if let pair = pairs.first(where: { $0.recipeURL == repo.cloneURL }) {
+                Text("-> \(pair.executionName)")
+            } else {
+                Text("Tap to pair")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedRecipeRepo = repo
+            isShowingExecutionPicker = true
+        }
+    }
+    
+    @ViewBuilder
+    private var executionPickerSheet: some View {
+        if let recipeRepo = selectedRecipeRepo {
+            VStack(spacing: 20) {
+                Picker("Execution Repository", selection: $selectedExecutionRepoURL) {
+                    ForEach(repos, id: \.id) { repo in
+                        Text(repo.name ?? "No Name").tag(repo.cloneURL ?? "")
                     }
                 }
+                .checklistdExecutionPickerStyle()
+                .labelsHidden()
+                HStack {
+                    Button("Save") {
+                        guard let executionRepo = repos.first(where: { $0.cloneURL == selectedExecutionRepoURL }) else { return }
+                        sync.setPair(recipe: recipeRepo, execution: executionRepo)
+                        pairs = sync.listPairs()
+                        refreshRecipeRepositories()
+                        refreshExecutionRepositories()
+                        isShowingExecutionPicker = false
+                        selectedRecipeRepo = nil
+                    }
+                    Spacer()
+                    Button("Remove Pair") {
+                        sync.removePair(for: recipeRepo)
+                        pairs = sync.listPairs()
+                        refreshRecipeRepositories()
+                        refreshExecutionRepositories()
+                        isShowingExecutionPicker = false
+                        selectedRecipeRepo = nil
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding()
+            .onAppear {
+                if let existingPair = pairs.first(where: { $0.recipeURL == recipeRepo.cloneURL }) {
+                    selectedExecutionRepoURL = existingPair.executionURL
+                } else {
+                    selectedExecutionRepoURL = recipeRepo.cloneURL ?? ""
+                }
+            }
+        } else {
+            EmptyView()
+        }
+    }
+    
+    private func loadAuthenticatedState() {
+        gitCommitName = sync.gitCommitName()
+        gitCommitEmail = sync.gitCommitEmail()
+        
+        if sync.isAuthenticated() {
+            isAuthenticated = true
+            Task {
+                guard let repos = await sync.listRepos() else {
+                    return
+                }
+                self.repos = repos
+                self.pairs = sync.listPairs()
+                refreshRecipeRepositories()
+                refreshExecutionRepositories()
+            }
+        } else {
+            isAuthenticated = false
+        }
+    }
+    
+    private func saveSetup() {
+        sync.setGitCommitIdentity(name: gitCommitName, email: gitCommitEmail)
+        
+        if !newPAT.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _ = sync.setPAT(newPAT)
+        }
+        
+        isAuthenticated = sync.isAuthenticated()
+        newPAT = ""
+        setupStateVersion += 1
+        
+        Task {
+            guard let repos = await sync.listRepos() else {
+                self.pairs = []
+                self.repos = []
+                return
+            }
+            self.repos = repos
+            self.pairs = sync.listPairs()
+            refreshRecipeRepositories()
+            refreshExecutionRepositories()
+        }
+    }
+    
+    private func continueToRecipes() {
+        isContinuing = true
+        Task {
+            await sync.pullRepos()
+            let repositories = refreshRecipeRepositories()
+            let executionRepositories = refreshExecutionRepositories()
+            await MainActor.run {
+                recipeRepositories = repositories
+                self.executionRepositories = executionRepositories
+                selectedTab = .recipes
+                isContinuing = false
             }
         }
     }
     
+    private var syncButtonTitle: String {
+        if isContinuing {
+            return "Loading..."
+        }
+        
+        return isSetupComplete ? "Sync" : "Complete Setup"
+    }
+    
+    private var isSetupComplete: Bool {
+        _ = setupStateVersion
+        return sync.isAuthenticated() && sync.gitCommitIdentity() != nil
+    }
+    
+    @discardableResult
+    private func refreshRecipeRepositories() -> [Sync.RecipeRepositoryDetails] {
+        let repositories = sync.listRecipes()
+        recipeRepositories = repositories
+        return repositories
+    }
+    
+    @discardableResult
+    private func refreshExecutionRepositories() -> [Sync.ExecutionRepositoryDetails] {
+        let repositories = sync.listExecutions()
+        executionRepositories = repositories
+        return repositories
+    }
+    
+    private func createExecution(for program: Program, recipeRepositoryURL: String) {
+        Task {
+            do {
+                let file = try await sync.createExecution(
+                    for: program,
+                    recipeRepositoryURL: recipeRepositoryURL
+                )
+                let repositories = refreshExecutionRepositories()
+                await MainActor.run {
+                    executionRepositories = repositories
+                    selectedTab = .executions
+                    executionPath = [file.fileURL]
+                }
+            } catch {
+                print("Couldn't create execution: \(error)")
+            }
+        }
+    }
+    
+    private func executionFile(for fileURL: URL) -> Sync.ExecutionFileDetails? {
+        executionRepositories
+            .flatMap(\.files)
+            .first(where: { $0.fileURL == fileURL })
+    }
+}
+
+private struct RecipeRepositoryListView: View {
+    let repositories: [Sync.RecipeRepositoryDetails]
+    let createExecution: (Program, String) -> Void
+    
+    var body: some View {
+        List(repositories, id: \.url) { repository in
+            NavigationLink {
+                RecipeListView(
+                    repository: repository,
+                    createExecution: { program in
+                        createExecution(program, repository.url)
+                    }
+                )
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(repository.name)
+                        .font(.headline)
+                    Text("\(repository.files.count) recipes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct RecipeListView: View {
+    let repository: Sync.RecipeRepositoryDetails
+    let createExecution: (Program) -> Void
+    
+    var body: some View {
+        List(Array(repository.files.enumerated()), id: \.offset) { _, program in
+            Button {
+                createExecution(program)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(program.title)
+                        .font(.headline)
+                    Text(program.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .navigationTitle(repository.name)
+        .checklistdInlineNavigationTitle()
+    }
+}
+
+private struct ExecutionRepositoryListView: View {
+    let repositories: [Sync.ExecutionRepositoryDetails]
+    
+    var body: some View {
+        List(repositories, id: \.url) { repository in
+            NavigationLink {
+                ExecutionListView(repository: repository)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(repository.name)
+                        .font(.headline)
+                    Text("\(repository.files.count) executions")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct ExecutionListView: View {
+    let repository: Sync.ExecutionRepositoryDetails
+    
+    var body: some View {
+        List(repository.files, id: \.fileURL) { file in
+            NavigationLink(value: file.fileURL) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(file.execution.program.title)
+                        .font(.headline)
+                    Text(file.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle(repository.name)
+        .checklistdInlineNavigationTitle()
+    }
+}
+
+private struct ExecutionDetailView: View {
+    let file: Sync.ExecutionFileDetails
+    let sync: Sync
+    @State private var execution: Execution?
+    
+    init(file: Sync.ExecutionFileDetails, sync: Sync) {
+        self.file = file
+        self.sync = sync
+        _execution = State(initialValue: file.execution)
+    }
+    
+    var body: some View {
+        ContentView(
+            execution: Binding(
+                get: { execution },
+                set: { newExecution in
+                    execution = newExecution
+                    
+                    if let newExecution {
+                        Task {
+                            await sync.saveExecution(newExecution, to: file.fileURL)
+                        }
+                    }
+                }
+            )
+        )
+        .navigationTitle(execution?.program.title ?? "Execution")
+        .checklistdInlineNavigationTitle()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func checklistdInlineNavigationTitle() -> some View {
+        #if os(iOS)
+        navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func checklistdExecutionPickerStyle() -> some View {
+        #if os(iOS)
+        pickerStyle(.wheel)
+        #else
+        pickerStyle(.menu)
+        #endif
+    }
 }
