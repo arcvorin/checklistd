@@ -26,9 +26,9 @@ enum StepType : String, Codable {
 
 enum InputKind : Codable {
     case text
-    case int(start: Int?, end: Int?)
+    case int(start: Int?, end: Int?, options: [Int]?)
     case bool
-    case float(start: Double?, end: Double?)
+    case float(start: Double?, end: Double?, options: [Float]?)
     case date(start: Date?, end: Date?, options: [Date]?)
     case choice(options: [String], allowOther: Bool)
     
@@ -51,13 +51,15 @@ enum InputKind : Codable {
         switch (self, variable) {
             case (.text, .string(let value)):
                 guard !value.isEmpty else { throw ComputeError.missingRequiredInput }
-            case (.int(let start, let end), .int(let value)):
+            case (.int(let start, let end, let options), .int(let value)):
                 if let start, value < start { throw ComputeError.inputOutOfBounds }
                 if let end, value > end { throw ComputeError.inputOutOfBounds }
-            case (.float(let start, let end), .float(let value)):
+                if let options, !options.contains(value) { throw ComputeError.invalidOption }
+            case (.float(let start, let end, let options), .float(let value)):
                 let doubleValue = Double(value)
                 if let start, doubleValue < start { throw ComputeError.inputOutOfBounds }
                 if let end, doubleValue > end { throw ComputeError.inputOutOfBounds }
+                if let options, !options.contains(value) { throw ComputeError.invalidOption }
             case (.date(let start, let end, let options), .date(let value)):
                 if let start, value < start { throw ComputeError.inputOutOfBounds }
                 if let end, value > end { throw ComputeError.inputOutOfBounds }
@@ -73,6 +75,159 @@ enum InputKind : Codable {
     }
 }
 
+extension InputKind {
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case start
+        case end
+        case options
+        case allowOther
+    }
+    
+    private struct TypedOptions<Value: Codable>: Codable {
+        var type: StorageMedium
+        var values: [Value]
+    }
+    
+    private enum KindType: String, Codable {
+        case text
+        case int
+        case bool
+        case float
+        case date
+        case choice
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(KindType.self, forKey: .type)
+        
+        switch type {
+        case .text:
+            self = .text
+        case .int:
+            self = .int(
+                start: try container.decodeIfPresent(Int.self, forKey: .start),
+                end: try container.decodeIfPresent(Int.self, forKey: .end),
+                options: try Self.decodeOptions(Int.self, expectedType: .int, from: container)
+            )
+        case .bool:
+            self = .bool
+        case .float:
+            self = .float(
+                start: try container.decodeIfPresent(Double.self, forKey: .start),
+                end: try container.decodeIfPresent(Double.self, forKey: .end),
+                options: try Self.decodeOptions(Float.self, expectedType: .float, from: container)
+            )
+        case .date:
+            self = .date(
+                start: try container.decodeIfPresent(Date.self, forKey: .start),
+                end: try container.decodeIfPresent(Date.self, forKey: .end),
+                options: try Self.decodeOptions(Date.self, expectedType: .date, from: container)
+            )
+        case .choice:
+            self = .choice(
+                options: try Self.decodeOptions(String.self, expectedType: .string, from: container) ?? [],
+                allowOther: try container.decodeIfPresent(Bool.self, forKey: .allowOther) ?? false
+            )
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        switch self {
+        case .text:
+            try container.encode(KindType.text, forKey: .type)
+        case .int(let start, let end, let options):
+            try container.encode(KindType.int, forKey: .type)
+            try container.encodeIfPresent(start, forKey: .start)
+            try container.encodeIfPresent(end, forKey: .end)
+            try encodeOptions(options, type: .int, to: &container)
+        case .bool:
+            try container.encode(KindType.bool, forKey: .type)
+        case .float(let start, let end, let options):
+            try container.encode(KindType.float, forKey: .type)
+            try container.encodeIfPresent(start, forKey: .start)
+            try container.encodeIfPresent(end, forKey: .end)
+            try encodeOptions(options, type: .float, to: &container)
+        case .date(let start, let end, let options):
+            try container.encode(KindType.date, forKey: .type)
+            try container.encodeIfPresent(start, forKey: .start)
+            try container.encodeIfPresent(end, forKey: .end)
+            try encodeOptions(options, type: .date, to: &container)
+        case .choice(let options, let allowOther):
+            try container.encode(KindType.choice, forKey: .type)
+            try encodeOptions(options, type: .string, to: &container)
+            try container.encode(allowOther, forKey: .allowOther)
+        }
+    }
+    
+    private static func decodeOptions<Value: Codable>(
+        _ valueType: Value.Type,
+        expectedType: StorageMedium,
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [Value]? {
+        guard container.contains(.options) else { return nil }
+        let options = try container.decode(TypedOptions<Value>.self, forKey: .options)
+        guard options.type == expectedType else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .options,
+                in: container,
+                debugDescription: "Expected \(expectedType.rawValue) options, got \(options.type.rawValue)."
+            )
+        }
+        return options.values
+    }
+    
+    private func encodeOptions<Value: Codable>(
+        _ values: [Value]?,
+        type: StorageMedium,
+        to container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        try container.encodeIfPresent(values.map { TypedOptions(type: type, values: $0) }, forKey: .options)
+    }
+    
+    func decodeVariable<Key: CodingKey>(from container: KeyedDecodingContainer<Key>, forKey key: Key) throws -> Variable? {
+        guard container.contains(key) else { return nil }
+        
+        switch self {
+        case .text, .choice:
+            return .string(value: try container.decode(String.self, forKey: key))
+        case .int:
+            return .int(int: try container.decode(Int.self, forKey: key))
+        case .bool:
+            return .bool(bool: try container.decode(Bool.self, forKey: key))
+        case .float:
+            return .float(float: try container.decode(Float.self, forKey: key))
+        case .date:
+            return .date(date: try container.decode(Date.self, forKey: key))
+        }
+    }
+    
+    func encodeVariable<Key: CodingKey>(
+        _ variable: Variable?,
+        to container: inout KeyedEncodingContainer<Key>,
+        forKey key: Key
+    ) throws {
+        guard let variable else { return }
+        try validate(variable)
+        
+        switch variable {
+        case .string(let value):
+            try container.encode(value, forKey: key)
+        case .date(let date):
+            try container.encode(date, forKey: key)
+        case .int(let int):
+            try container.encode(int, forKey: key)
+        case .bool(let bool):
+            try container.encode(bool, forKey: key)
+        case .float(let float):
+            try container.encode(float, forKey: key)
+        }
+    }
+}
+
 
 
 protocol Step : Codable {
@@ -81,6 +236,11 @@ protocol Step : Codable {
     func compute(variables: [String: Variable]) throws -> Step
     func canComplete(with variables: [String: Variable]) throws -> Bool
     func getNextStep() -> String?
+}
+
+enum StepCodingMode {
+    case program
+    case execution
 }
 
 struct StepMetadata: Codable {
@@ -205,6 +365,12 @@ struct TextStep: Step {
     var message: String
     private var nextStepId: String?
     
+    private enum CodingKeys: String, CodingKey {
+        case metadata
+        case message
+        case next
+    }
+    
     init(id: String, message: String, nextStepId: String? = nil) {
         self.type = .text
         self.metadata = StepMetadata(id: id)
@@ -221,6 +387,21 @@ struct TextStep: Step {
     func getNextStep() -> String? {
         nextStepId
     }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = .text
+        self.metadata = try container.decode(StepMetadata.self, forKey: .metadata)
+        self.message = try container.decode(String.self, forKey: .message)
+        self.nextStepId = try container.decodeIfPresent(String.self, forKey: .next)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encode(message, forKey: .message)
+        try container.encodeIfPresent(nextStepId, forKey: .next)
+    }
 }
 
 struct InputStep: Step {
@@ -228,15 +409,28 @@ struct InputStep: Step {
     var metadata: StepMetadata
     var inputKind: InputKind
     var label: String?
+    var defaultValue: Variable?
     var value: Variable?
     var key: String
     private var nextStepId: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case metadata
+        case input
+        case label
+        case defaultValue
+        case value
+        case key
+        case next
+    }
     
     func compute(variables: [String : Variable]) throws -> any Step {
         var copy = self
         copy.label = label != nil ? (try? Parser.interpolate(label!, variables: variables)) : nil
         if (variables.keys.contains(key)) {
             copy.value = variables[key]
+        } else if copy.value == nil {
+            copy.value = defaultValue
         }
         guard let copyValue = copy.value else { return copy }
         try inputKind.validate(copyValue)
@@ -258,6 +452,47 @@ struct InputStep: Step {
     func getNextStep() -> String? {
         nextStepId
     }
+    
+    init(from decoder: Decoder) throws {
+        try self.init(from: decoder, mode: .program)
+    }
+    
+    init(from decoder: Decoder, mode: StepCodingMode) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = .input
+        self.metadata = try container.decode(StepMetadata.self, forKey: .metadata)
+        self.inputKind = try container.decode(InputKind.self, forKey: .input)
+        self.label = try container.decodeIfPresent(String.self, forKey: .label)
+        switch mode {
+        case .program:
+            self.defaultValue = try inputKind.decodeVariable(from: container, forKey: .defaultValue)
+            self.value = nil
+        case .execution:
+            self.defaultValue = nil
+            self.value = try inputKind.decodeVariable(from: container, forKey: .value)
+        }
+        self.key = try container.decode(String.self, forKey: .key)
+        self.nextStepId = try container.decode(String.self, forKey: .next)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        try encode(to: encoder, mode: .program)
+    }
+    
+    func encode(to encoder: Encoder, mode: StepCodingMode) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encode(inputKind, forKey: .input)
+        try container.encodeIfPresent(label, forKey: .label)
+        switch mode {
+        case .program:
+            try inputKind.encodeVariable(defaultValue, to: &container, forKey: .defaultValue)
+        case .execution:
+            try inputKind.encodeVariable(value, to: &container, forKey: .value)
+        }
+        try container.encode(key, forKey: .key)
+        try container.encode(nextStepId, forKey: .next)
+    }
 }
 
 indirect enum ConditionalExpression: Codable {
@@ -269,6 +504,67 @@ indirect enum ConditionalExpression: Codable {
         case numeric(value: Float)
         case numericExpression(value: NumericExpression)
         case boolean(value: Bool)
+        
+        private enum CodingKeys: String, CodingKey {
+            case variable = "var"
+            case expression
+            case date
+        }
+        
+        init(from decoder: Decoder) throws {
+            if let container = try? decoder.singleValueContainer() {
+                if let value = try? container.decode(Bool.self) {
+                    self = .boolean(value: value)
+                    return
+                }
+                if let value = try? container.decode(Float.self) {
+                    self = .numeric(value: value)
+                    return
+                }
+                if let value = try? container.decode(String.self) {
+                    self = .string(value: value)
+                    return
+                }
+            }
+            
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let name = try container.decodeIfPresent(String.self, forKey: .variable) {
+                self = .variable(name: name)
+            } else if let expression = try container.decodeIfPresent(NumericExpression.self, forKey: .expression) {
+                self = .numericExpression(value: expression)
+            } else if let date = try container.decodeIfPresent(Date.self, forKey: .date) {
+                self = .date(value: date)
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .variable,
+                    in: container,
+                    debugDescription: "Expected a conditional operand."
+                )
+            }
+        }
+        
+        func encode(to encoder: Encoder) throws {
+            switch self {
+            case .variable(let name):
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(name, forKey: .variable)
+            case .string(let value):
+                var container = encoder.singleValueContainer()
+                try container.encode(value)
+            case .date(let value):
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(value, forKey: .date)
+            case .numeric(let value):
+                var container = encoder.singleValueContainer()
+                try container.encode(value)
+            case .numericExpression(let value):
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(value, forKey: .expression)
+            case .boolean(let value):
+                var container = encoder.singleValueContainer()
+                try container.encode(value)
+            }
+        }
         
         func stringValue(variables: [String: Variable]) throws -> String {
             switch self {
@@ -386,12 +682,151 @@ indirect enum ConditionalExpression: Codable {
     case after(lhs: VariableOrKindEnum, rhs: VariableOrKindEnum, orEqual: Bool = false)
     case sameDay(lhs: VariableOrKindEnum, rhs: VariableOrKindEnum)
     
+    private enum CodingKeys: String, CodingKey {
+        case op
+        case type
+        case lhs
+        case rhs
+        case orEqual
+        case expressions
+        case expression
+        case value
+    }
+    
+    private enum ConditionOperator: String, Codable {
+        case greaterThan
+        case lessThan
+        case equal
+        case valueIn = "in"
+        case and
+        case or
+        case not
+        case boolean
+        case before
+        case after
+        case sameDay
+    }
+    
     enum ConditionalExpressionError: Error {
         case variableUnexpectedValue(expected: String)
         case wrongType(expected: String, actual: String)
         case variableNotFound(name: String)
         case variableWrongType(name: String, expected: String, actual: String)
         case unexpectedComparison(lhs: String, rhs: String)
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let op = try container.decode(ConditionOperator.self, forKey: .op)
+        
+        switch op {
+        case .greaterThan:
+            self = .greaterThan(
+                type: try container.decode(String.self, forKey: .type),
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs),
+                orEqual: try container.decodeIfPresent(Bool.self, forKey: .orEqual) ?? false
+            )
+        case .lessThan:
+            self = .lessThan(
+                type: try container.decode(String.self, forKey: .type),
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs),
+                orEqual: try container.decodeIfPresent(Bool.self, forKey: .orEqual) ?? false
+            )
+        case .equal:
+            self = .equal(
+                type: try container.decode(String.self, forKey: .type),
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs)
+            )
+        case .valueIn:
+            self = .valueIn(
+                type: try container.decode(String.self, forKey: .type),
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode([VariableOrKindEnum].self, forKey: .rhs)
+            )
+        case .and:
+            self = .and(expressions: try container.decode([ConditionalExpression].self, forKey: .expressions))
+        case .or:
+            self = .or(expressions: try container.decode([ConditionalExpression].self, forKey: .expressions))
+        case .not:
+            self = .negate(expression: try container.decode(ConditionalExpression.self, forKey: .expression))
+        case .boolean:
+            self = .boolean(value: try container.decode(VariableOrKindEnum.self, forKey: .value))
+        case .before:
+            self = .before(
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs),
+                orEqual: try container.decodeIfPresent(Bool.self, forKey: .orEqual) ?? false
+            )
+        case .after:
+            self = .after(
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs),
+                orEqual: try container.decodeIfPresent(Bool.self, forKey: .orEqual) ?? false
+            )
+        case .sameDay:
+            self = .sameDay(
+                lhs: try container.decode(VariableOrKindEnum.self, forKey: .lhs),
+                rhs: try container.decode(VariableOrKindEnum.self, forKey: .rhs)
+            )
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        switch self {
+        case .greaterThan(let type, let lhs, let rhs, let orEqual):
+            try container.encode(ConditionOperator.greaterThan, forKey: .op)
+            try container.encode(type, forKey: .type)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+            try container.encode(orEqual, forKey: .orEqual)
+        case .lessThan(let type, let lhs, let rhs, let orEqual):
+            try container.encode(ConditionOperator.lessThan, forKey: .op)
+            try container.encode(type, forKey: .type)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+            try container.encode(orEqual, forKey: .orEqual)
+        case .equal(let type, let lhs, let rhs):
+            try container.encode(ConditionOperator.equal, forKey: .op)
+            try container.encode(type, forKey: .type)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+        case .valueIn(let type, let lhs, let rhs):
+            try container.encode(ConditionOperator.valueIn, forKey: .op)
+            try container.encode(type, forKey: .type)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+        case .and(let expressions):
+            try container.encode(ConditionOperator.and, forKey: .op)
+            try container.encode(expressions, forKey: .expressions)
+        case .or(let expressions):
+            try container.encode(ConditionOperator.or, forKey: .op)
+            try container.encode(expressions, forKey: .expressions)
+        case .negate(let expression):
+            try container.encode(ConditionOperator.not, forKey: .op)
+            try container.encode(expression, forKey: .expression)
+        case .boolean(let value):
+            try container.encode(ConditionOperator.boolean, forKey: .op)
+            try container.encode(value, forKey: .value)
+        case .before(let lhs, let rhs, let orEqual):
+            try container.encode(ConditionOperator.before, forKey: .op)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+            try container.encode(orEqual, forKey: .orEqual)
+        case .after(let lhs, let rhs, let orEqual):
+            try container.encode(ConditionOperator.after, forKey: .op)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+            try container.encode(orEqual, forKey: .orEqual)
+        case .sameDay(let lhs, let rhs):
+            try container.encode(ConditionOperator.sameDay, forKey: .op)
+            try container.encode(lhs, forKey: .lhs)
+            try container.encode(rhs, forKey: .rhs)
+        }
     }
     
     func evaluate(variables: [String: Variable]) throws -> Bool {
@@ -509,6 +944,15 @@ struct ConditionalStep: Step {
     var trueStepId: String
     var falseStepId: String
     var result: Bool?
+    
+    private enum CodingKeys: String, CodingKey {
+        case metadata
+        case condition
+        case trueStep = "true"
+        case falseStep = "false"
+        case result
+    }
+    
     func compute(variables: [String : Variable]) throws -> any Step {
         var copy = self
         copy.result = try condition.evaluate(variables: variables)
@@ -521,6 +965,40 @@ struct ConditionalStep: Step {
         }
         return result ? trueStepId : falseStepId
     }
+    
+    init(from decoder: Decoder) throws {
+        try self.init(from: decoder, mode: .program)
+    }
+    
+    init(from decoder: Decoder, mode: StepCodingMode) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = .conditional
+        self.metadata = try container.decode(StepMetadata.self, forKey: .metadata)
+        self.condition = try container.decode(ConditionalExpression.self, forKey: .condition)
+        self.trueStepId = try container.decode(String.self, forKey: .trueStep)
+        self.falseStepId = try container.decode(String.self, forKey: .falseStep)
+        switch mode {
+        case .program:
+            self.result = nil
+        case .execution:
+            self.result = try container.decodeIfPresent(Bool.self, forKey: .result)
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        try encode(to: encoder, mode: .program)
+    }
+    
+    func encode(to encoder: Encoder, mode: StepCodingMode) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encode(condition, forKey: .condition)
+        try container.encode(trueStepId, forKey: .trueStep)
+        try container.encode(falseStepId, forKey: .falseStep)
+        if mode == .execution {
+            try container.encodeIfPresent(result, forKey: .result)
+        }
+    }
 }
 
 struct ComputeStep: Step {
@@ -530,6 +1008,14 @@ struct ComputeStep: Step {
     var expression: NumericExpression
     var computedValue: Float?
     var nextStepId: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case metadata
+        case key
+        case expression
+        case computedValue
+        case next
+    }
     
     func expressionVariables() -> [String] {
         expression.variablesUsed()
@@ -556,6 +1042,40 @@ struct ComputeStep: Step {
     func getNextStep() -> String? {
         nextStepId
     }
+    
+    init(from decoder: Decoder) throws {
+        try self.init(from: decoder, mode: .program)
+    }
+    
+    init(from decoder: Decoder, mode: StepCodingMode) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = .compute
+        self.metadata = try container.decode(StepMetadata.self, forKey: .metadata)
+        self.key = try container.decode(String.self, forKey: .key)
+        self.expression = try container.decode(NumericExpression.self, forKey: .expression)
+        switch mode {
+        case .program:
+            self.computedValue = nil
+        case .execution:
+            self.computedValue = try container.decodeIfPresent(Float.self, forKey: .computedValue)
+        }
+        self.nextStepId = try container.decode(String.self, forKey: .next)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        try encode(to: encoder, mode: .program)
+    }
+    
+    func encode(to encoder: Encoder, mode: StepCodingMode) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encode(key, forKey: .key)
+        try container.encode(expression, forKey: .expression)
+        if mode == .execution {
+            try container.encodeIfPresent(computedValue, forKey: .computedValue)
+        }
+        try container.encode(nextStepId, forKey: .next)
+    }
 }
 
 
@@ -565,19 +1085,49 @@ struct StepEnvelope {
 
 extension StepEnvelope: Codable {
     
-    private enum CodingKeys: CodingKey {
-        case type, step
+    private enum CodingKeys: String, CodingKey {
+        case type
     }
     
     init(from decoder: any Decoder) throws {
+        try self.init(from: decoder, mode: .program)
+    }
+    
+    init(from decoder: any Decoder, mode: StepCodingMode) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(StepType.self, forKey: .type)
-        self.step = try type.metatype.init(from: container.superDecoder(forKey: .step))
+        
+        switch type {
+        case .text:
+            self.step = try TextStep(from: decoder)
+        case .input:
+            self.step = try InputStep(from: decoder, mode: mode)
+        case .compute:
+            self.step = try ComputeStep(from: decoder, mode: mode)
+        case .conditional:
+            self.step = try ConditionalStep(from: decoder, mode: mode)
+        }
     }
     
     func encode(to encoder: Encoder) throws {
+        try encode(to: encoder, mode: .program)
+    }
+    
+    func encode(to encoder: Encoder, mode: StepCodingMode) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(step.type, forKey: .type)
-        try step.encode(to: container.superEncoder(forKey: .step))
+        
+        switch step {
+        case let textStep as TextStep:
+            try textStep.encode(to: encoder)
+        case let inputStep as InputStep:
+            try inputStep.encode(to: encoder, mode: mode)
+        case let computeStep as ComputeStep:
+            try computeStep.encode(to: encoder, mode: mode)
+        case let conditionalStep as ConditionalStep:
+            try conditionalStep.encode(to: encoder, mode: mode)
+        default:
+            try step.encode(to: encoder)
+        }
     }
 }

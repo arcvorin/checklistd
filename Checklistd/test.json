@@ -4,709 +4,213 @@
     "authorName": "Arc Vorin",
     "description": "Testing for science, you monsters!",
     "steps": [
-
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "filtering-question" },
-                "inputKind": {
-                    "bool": {}
-                },
-                "label": "Did you do the sterile filtering?",
-                "key": "didFilter",
-                "value": {
-                    "bool": {
-                        "bool": false
-                    }
-                },
-                "nextStepId": "filtering-check"
-            }
+            "metadata": { "id": "filtering-question" },
+            "input": { "type": "bool" },
+            "label": "Did you do the sterile filtering?",
+            "key": "didFilter",
+            "defaultValue": false,
+            "next": "filtering-check"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "filtering-reminder" },
-                "message": "Concentration must be measured after sterile filtering.",
-                "nextStepId": "filtering-question"
-            }
+            "metadata": { "id": "filtering-reminder" },
+            "message": "Concentration must be measured after sterile filtering.",
+            "next": "filtering-question"
         },
         {
             "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "filtering-check",
-                    "visible": false
-                },
-                "condition": {
-                    "boolean": {
-                        "value": { "variable": { "name": "didFilter" } }
-                    }
-                },
-                "trueStepId": "filtering-method-question",
-                "falseStepId": "filtering-reminder"
-            }
+            "metadata": {
+                "id": "filtering-check",
+                "visible": false
+            },
+            "condition": {
+                "op": "boolean",
+                "value": { "var": "didFilter" }
+            },
+            "true": "filtering-method-question",
+            "false": "filtering-reminder"
         },
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "filtering-method-question" },
-                "inputKind": {
-                    "text": {}
-                },
-                "label": "Which filter did you use?",
-                "key": "filteringMethod",
-                "nextStepId": "concentration-text"
-            }
+            "metadata": { "id": "filtering-method-question" },
+            "input": { "type": "text" },
+            "label": "Which filter did you use?",
+            "key": "filteringMethod",
+            "next": "concentration-text"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "concentration-text" },
-                "message": "We need the concentration of the particle stock from UV assay",
-                "nextStepId": "concentration-input"
-            }
+            "metadata": { "id": "concentration-text" },
+            "message": "We need the concentration of the particle stock from UV assay",
+            "next": "concentration-input"
         },
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "concentration-input" },
-                "inputKind": {
-                    "float": {
-                        "start": 0.3,
-                        "end": 80
-                    }
-                },
-                "label": "[Fe]*DF [mg/mL] -> C (range: 0.3 to 80 mg/mL)",
-                "key": "C",
-                "nextStepId": "particle-input"
-            }
+            "metadata": { "id": "concentration-input" },
+            "input": {
+                "type": "float",
+                "start": 0.3,
+                "end": 80
+            },
+            "label": "[Fe]*DF [mg/mL] -> C (range: 0.3 to 80 mg/mL)",
+            "key": "C",
+            "next": "particle-input"
         },
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "particle-input" },
-                "inputKind": {
-                    "float": {
-                        "start": 0.5,
-                        "end": 1500
-                    }
-                },
-                "label": "How many ugFe are to be injected? (range: 0.5 to 1500 ug)",
-                "key": "m",
-                "nextStepId": "dead-volume-input"
-            }
+            "metadata": { "id": "particle-input" },
+            "input": {
+                "type": "float",
+                "start": 0.5,
+                "end": 1500
+            },
+            "label": "How many ugFe are to be injected? (range: 0.5 to 1500 ug)",
+            "key": "m",
+            "next": "dead-volume-input"
         },
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "dead-volume-input" },
-                "inputKind": {
-                    "float": {
-                        "options": [
-                            0.7,
-                        ],
-                        "allowOther": true
-                    }
-                },
-                "label": "Choose the dead volume of the syringe? (uL)",
-                "key": "Vdead",
-                "value": {
-                    "float": {
-                        "float": 0.7
-                    }
-                },
-                "nextStepId": "effective-particle-volume-compute"
-            }
+            "metadata": { "id": "dead-volume-input" },
+            "input": {
+                "type": "float",
+                "options": {
+                    "type": "float",
+                    "values": [0.5, 0.7, 1]
+                }
+            },
+            "label": "Choose the dead volume of the syringe? (uL)",
+            "key": "Vdead",
+            "defaultValue": 0.7,
+            "next": "effective-particle-volume-compute"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "effective-particle-volume-compute",
-                    "visible": false
-                },
-                "key": "VPeff",
-                "expression": "m / C",
-                "nextStepId": "total-volume-conditional"
-            }
+            "metadata": {
+                "id": "effective-particle-volume-compute",
+                "visible": false
+            },
+            "key": "VPeff",
+            "expression": "m / C",
+            "next": "total-volume-conditional"
         },
         {
             "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "total-volume-conditional",
-                    "visible": false
-                },
-                "condition": {
-                    "greaterThan": {
-                        "type": "numeric",
-                        "lhs": { "variable": { "name": "VPeff" } },
-                        "rhs": { "numeric": { "value": 90 } },
-                        "orEqual": false
-                    }
-                },
-                "trueStepId": "set-vt-200",
-                "falseStepId": "set-vt-100"
-            }
+            "metadata": {
+                "id": "total-volume-conditional",
+                "visible": false
+            },
+            "condition": {
+                "op": "greaterThan",
+                "type": "numeric",
+                "lhs": { "var": "VPeff" },
+                "rhs": 90,
+                "orEqual": false
+            },
+            "true": "set-vt-200",
+            "false": "set-vt-100"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "set-vt-200",
-                    "visible": false
-                },
-                "key": "VT",
-                "expression": "200 + Vdead",
-                "nextStepId": "set-vp"
-            }
+            "metadata": {
+                "id": "set-vt-200",
+                "visible": false
+            },
+            "key": "VT",
+            "expression": "200 + Vdead",
+            "next": "set-vp"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "set-vt-100",
-                    "visible": false
-                },
-                "key": "VT",
-                "expression": "100 + Vdead",
-                "nextStepId": "set-vp"
-            }
+            "metadata": {
+                "id": "set-vt-100",
+                "visible": false
+            },
+            "key": "VT",
+            "expression": "100 + Vdead",
+            "next": "set-vp"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "set-vp",
-                    "visible": false
-                },
-                "key": "VP",
-                "expression": "VPeff * (VT/(VT - Vdead))",
-                "nextStepId": "sonic-question"
-            }
+            "metadata": {
+                "id": "set-vp",
+                "visible": false
+            },
+            "key": "VP",
+            "expression": "VPeff * (VT/(VT - Vdead))",
+            "next": "sonic-question"
         },
         {
             "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "sonic-question" },
-                "inputKind": {
-                    "bool": {}
-                },
-                "label": "Did you sonicate the particle stock?",
-                "key": "didSonicate",
-                "value": {
-                    "bool": {
-                        "bool": false
-                    }
-                },
-                "nextStepId": "sonicate-check"
-            }
+            "metadata": { "id": "sonic-question" },
+            "input": { "type": "bool" },
+            "label": "Did you sonicate the particle stock?",
+            "key": "didSonicate",
+            "defaultValue": false,
+            "next": "sonicate-check"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "sonication-reminder-text" },
-                "message": "Sonication of the particle stock is required.",
-                "nextStepId": "sonic-question"
-            }
+            "metadata": { "id": "sonication-reminder-text" },
+            "message": "Sonication of the particle stock is required.",
+            "next": "sonic-question"
         },
         {
             "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "sonicate-check",
-                    "visible": false
-                },
-                "condition": {
-                    "boolean": {
-                        "value": { "variable": { "name": "didSonicate" } }
-                    }
-                },
-                "trueStepId": "pipette-step-particles",
-                "falseStepId": "sonication-reminder-text"
-            }
+            "metadata": {
+                "id": "sonicate-check",
+                "visible": false
+            },
+            "condition": {
+                "op": "boolean",
+                "value": { "var": "didSonicate" }
+            },
+            "true": "pipette-step-particles",
+            "false": "sonication-reminder-text"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "pipette-step-particles" },
-                "message": "Pipette {{ VP }} uL from the particle stock",
-                "nextStepId": "set-vpbs"
-            }
+            "metadata": { "id": "pipette-step-particles" },
+            "message": "Pipette {{ VP }} uL from the particle stock",
+            "next": "set-vpbs"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "set-vpbs",
-                    "visible": false
-                },
-                "key": "VPBS",
-                "expression": "0.1 * VT",
-                "nextStepId": "pipette-step-vpbs"
-            }
+            "metadata": {
+                "id": "set-vpbs",
+                "visible": false
+            },
+            "key": "VPBS",
+            "expression": "0.1 * VT",
+            "next": "pipette-step-vpbs"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "pipette-step-vpbs" },
-                "message": "Pipette {{ VPBS }} uL from the 10X PBS bottle",
-                "nextStepId": "set-vw"
-            }
+            "metadata": { "id": "pipette-step-vpbs" },
+            "message": "Pipette {{ VPBS }} uL from the 10X PBS bottle",
+            "next": "set-vw"
         },
         {
             "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "set-vw",
-                    "visible": false
-                },
-                "key": "VW",
-                "expression": "0.9 * VT - VP",
-                "nextStepId": "pipette-step-vw"
-            }
+            "metadata": {
+                "id": "set-vw",
+                "visible": false
+            },
+            "key": "VW",
+            "expression": "0.9 * VT - VP",
+            "next": "pipette-step-vw"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "pipette-step-vw" },
-                "message": "Pipette {{ VW }} uL of sterile filtered water",
-                "nextStepId": "step-vortex"
-            }
+            "metadata": { "id": "pipette-step-vw" },
+            "message": "Pipette {{ VW }} uL of sterile filtered water",
+            "next": "step-vortex"
         },
         {
             "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "step-vortex" },
-                "message": "Vortex the Eppendorf with the solution.",
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "greeting" },
-                "message": "Nice to meet you, {{ name }}. Next we will collect a few typed values.",
-                "nextStepId": "age-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "age-input" },
-                "inputKind": {
-                    "int": {
-                        "start": 0,
-                        "end": 130
-                    }
-                },
-                "label": "How old are you, {{ name }}? Enter a value from 0 to 130.",
-                "key": "age",
-                "nextStepId": "confidence-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "confidence-input" },
-                "inputKind": {
-                    "float": {
-                        "start": 0,
-                        "end": 10
-                    }
-                },
-                "label": "How confident are you today, {{ name }}? Use a score from 0.0 to 10.0.",
-                "key": "confidence",
-                "nextStepId": "profile-score-compute"
-            }
-        },
-        {
-            "type": "compute",
-            "step": {
-                "type": "compute",
-                "metadata": {
-                    "id": "profile-score-compute",
-                    "visible": false
-                },
-                "key": "profileScore",
-                "expression": "age + confidence * 2",
-                "nextStepId": "profile-score-summary"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "profile-score-summary" },
-                "message": "Computed profile score: {{ profileScore }}.",
-                "nextStepId": "profile-summary"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "profile-summary" },
-                "message": "Profile so far: {{ name }}, age {{ age }}, confidence {{ confidence }}/10.",
-                "nextStepId": "priority-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "priority-input" },
-                "inputKind": {
-                    "choice": {
-                        "options": [
-                            "Low",
-                            "Medium",
-                            "High"
-                        ],
-                        "allowOther": false
-                    }
-                },
-                "label": "Choose a fixed priority.",
-                "key": "priority",
-                "nextStepId": "planning-branch"
-            }
-        },
-        {
-            "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "planning-branch",
-                    "visible": false
-                },
-                "condition": {
-                    "or": {
-                        "expressions": [
-                            {
-                                "and": {
-                                    "expressions": [
-                                        {
-                                            "equal": {
-                                                "type": "string",
-                                                "lhs": { "variable": { "name": "priority" } },
-                                                "rhs": { "string": { "value": "High" } }
-                                            }
-                                        },
-                                        {
-                                            "greaterThan": {
-                                                "type": "numeric",
-                                                "lhs": { "numericExpression": { "value": "age + confidence * 2" } },
-                                                "rhs": { "numeric": { "value": 45 } },
-                                                "orEqual": true
-                                            }
-                                        }
-                                    ]
-                                }
-                            },
-                            {
-                                "greaterThan": {
-                                    "type": "numeric",
-                                    "lhs": { "variable": { "name": "profileScore" } },
-                                    "rhs": { "numeric": { "value": 80 } },
-                                    "orEqual": false
-                                }
-                            }
-                        ]
-                    }
-                },
-                "trueStepId": "escalated-plan-note",
-                "falseStepId": "standard-plan-note"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "escalated-plan-note" },
-                "message": "{{ name }}, this is treated as an escalated plan because {{ priority }} priority and score {{ profileScore }} need extra attention.",
-                "nextStepId": "role-input"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "standard-plan-note" },
-                "message": "{{ name }}, this looks like a standard plan with {{ priority }} priority and score {{ profileScore }}.",
-                "nextStepId": "role-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "role-input" },
-                "inputKind": {
-                    "choice": {
-                        "options": [
-                            "Designer",
-                            "Engineer",
-                            "Researcher"
-                        ],
-                        "allowOther": true
-                    }
-                },
-                "label": "Choose a role or enter a custom one.",
-                "key": "role",
-                "nextStepId": "deadline-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "deadline-input" },
-                "inputKind": {
-                    "date": {
-                        "start": "2026-01-01",
-                        "end": "2026-12-31"
-                    }
-                },
-                "label": "Pick a 2026 deadline for {{ priority }} priority work.",
-                "key": "deadline",
-                "value": {
-                    "date": {
-                        "date": "2026-03-15"
-                    }
-                },
-                "nextStepId": "review-date-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "review-date-input" },
-                "inputKind": {
-                    "date": {
-                        "options": [
-                            "2026-03-15",
-                            "2026-06-20",
-                            "2026-09-25"
-                        ]
-                    }
-                },
-                "label": "Choose one of the available review dates.",
-                "key": "reviewDate",
-                "value": {
-                    "date": {
-                        "date": "2026-03-15"
-                    }
-                },
-                "nextStepId": "schedule-branch"
-            }
-        },
-        {
-            "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "schedule-branch",
-                    "visible": false
-                },
-                "condition": {
-                    "and": {
-                        "expressions": [
-                            {
-                                "before": {
-                                    "lhs": { "variable": { "name": "deadline" } },
-                                    "rhs": { "variable": { "name": "reviewDate" } },
-                                    "orEqual": true
-                                }
-                            },
-                            {
-                                "valueIn": {
-                                    "type": "date",
-                                    "lhs": { "variable": { "name": "reviewDate" } },
-                                    "rhs": [
-                                        { "date": { "value": "2026-03-15" } },
-                                        { "date": { "value": "2026-06-20" } },
-                                        { "date": { "value": "2026-09-25" } }
-                                    ]
-                                }
-                            }
-                        ]
-                    }
-                },
-                "trueStepId": "date-summary",
-                "falseStepId": "schedule-warning"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "schedule-warning" },
-                "message": "Schedule check: review date {{ reviewDate }} is before the deadline {{ deadline }}, so this plan needs adjustment.",
-                "nextStepId": "date-summary"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "date-summary" },
-                "message": "Timeline: deadline {{ deadline }}, review {{ reviewDate }}.",
-                "nextStepId": "include-age-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "include-age-input" },
-                "inputKind": {
-                    "bool": {}
-                },
-                "label": "{{ name }}, include your age in the final summary?",
-                "key": "includeAge",
-                "value": {
-                    "bool": {
-                        "bool": false
-                    }
-                },
-                "nextStepId": "age-disclosure-branch"
-            }
-        },
-        {
-            "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "age-disclosure-branch",
-                    "visible": false
-                },
-                "condition": {
-                    "boolean": {
-                        "value": { "variable": { "name": "includeAge" } }
-                    }
-                },
-                "trueStepId": "age-disclosure-note",
-                "falseStepId": "age-private-note"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "age-disclosure-note" },
-                "message": "Age disclosure is enabled, so {{ age }} will remain available in the final summary.",
-                "nextStepId": "color-input"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "age-private-note" },
-                "message": "Age disclosure is disabled, but the captured value is still available for conditional logic.",
-                "nextStepId": "color-input"
-            }
-        },
-        {
-            "type": "input",
-            "step": {
-                "type": "input",
-                "metadata": { "id": "color-input" },
-                "inputKind": {
-                    "choice": {
-                        "options": [
-                            "Red",
-                            "Green",
-                            "Blue"
-                        ],
-                        "allowOther": false
-                    }
-                },
-                "label": "Choose a status color.",
-                "key": "color",
-                "nextStepId": "visual-review-branch"
-            }
-        },
-        {
-            "type": "conditional",
-            "step": {
-                "type": "conditional",
-                "metadata": {
-                    "id": "visual-review-branch",
-                    "visible": false
-                },
-                "condition": {
-                    "and": {
-                        "expressions": [
-                            {
-                                "valueIn": {
-                                    "type": "string",
-                                    "lhs": { "variable": { "name": "color" } },
-                                    "rhs": [
-                                        { "string": { "value": "Red" } },
-                                        { "string": { "value": "Blue" } }
-                                    ]
-                                }
-                            },
-                            {
-                                "negate": {
-                                    "expression": {
-                                        "equal": {
-                                            "type": "string",
-                                            "lhs": { "variable": { "name": "role" } },
-                                            "rhs": { "string": { "value": "Designer" } }
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                },
-                "trueStepId": "visual-review-note",
-                "falseStepId": "final-summary"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "visual-review-note" },
-                "message": "{{ color }} was selected by a {{ role }}, so this run gets an extra visual review step.",
-                "nextStepId": "final-summary"
-            }
-        },
-        {
-            "type": "text",
-            "step": {
-                "type": "text",
-                "metadata": { "id": "final-summary" },
-                "message": "Final summary: {{ name }} is working as {{ role }} on {{ priority }} priority work. Age {{ age }} included: {{ includeAge }}. Confidence {{ confidence }}/10. Color: {{ color }}."
-            }
+            "metadata": { "id": "step-vortex" },
+            "message": "Vortex the Eppendorf with the solution."
         }
     ]
 }

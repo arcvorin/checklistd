@@ -7,8 +7,10 @@
 
 import Foundation
 import Testing
+import VersionedCodable
 @testable import Checklistd
 
+@MainActor
 struct ChecklistdTests {
     @Test func parserInterpolatesVariables() throws {
         let output = try Parser.interpolate(
@@ -64,5 +66,149 @@ struct ChecklistdTests {
         let computedTextStep = computedStep as? TextStep
         
         #expect(computedTextStep?.message == "Hello Arc")
+    }
+    
+    @Test func flatProgramSampleDecodesValidatesAndCreatesExecution() throws {
+        let program = try decodeBundledSampleProgram()
+        
+        try program.validate()
+        #expect(program.steps.count == 22)
+        #expect(program.steps.first?.step is InputStep)
+        #expect(program.steps.last?.step.id == "step-vortex")
+        
+        var execution = Execution(program: program)
+        try execution.run()
+        #expect(execution.programCounter == "filtering-question")
+        #expect(execution.activeSteps.count == 1)
+    }
+    
+    @Test func flatStepAndInputShapesDecode() throws {
+        let program = try decodeBundledSampleProgram()
+        let inputSteps = program.steps.compactMap { $0.step as? InputStep }
+        
+        #expect(inputSteps.contains { if case .text = $0.inputKind { true } else { false } })
+        #expect(inputSteps.contains { if case .float(0.3, 80, nil) = $0.inputKind { true } else { false } })
+        #expect(inputSteps.contains { if case .float(nil, nil, let options) = $0.inputKind { options == [0.5, 0.7, 1] } else { false } })
+        #expect(inputSteps.contains { if case .bool = $0.inputKind { true } else { false } })
+        
+        #expect(inputSteps.allSatisfy { $0.value == nil })
+        
+        let variableKinds = inputSteps.compactMap(\.defaultValue).map { $0.storageMediumRepresentation() }
+        #expect(variableKinds.contains(.float))
+        #expect(variableKinds.contains(.bool))
+    }
+    
+    @Test func flatConditionalExpressionsDecodeAndEvaluate() throws {
+        let decoder = JSONDecoder.checklistd
+        let variables: [String: Variable] = [
+            "score": .float(float: 42),
+            "enabled": .bool(bool: true),
+            "role": .string(value: "Engineer"),
+            "deadline": .date(date: try Self.decodeDate("2026-03-15")),
+            "reviewDate": .date(date: try Self.decodeDate("2026-06-20"))
+        ]
+        
+        let numeric = try decoder.decode(
+            ConditionalExpression.self,
+            from: Data(#"{"op":"greaterThan","type":"numeric","lhs":{"var":"score"},"rhs":40,"orEqual":false}"#.utf8)
+        )
+        #expect(try numeric.evaluate(variables: variables))
+        
+        let boolean = try decoder.decode(
+            ConditionalExpression.self,
+            from: Data(#"{"op":"boolean","value":{"var":"enabled"}}"#.utf8)
+        )
+        #expect(try boolean.evaluate(variables: variables))
+        
+        let logic = try decoder.decode(
+            ConditionalExpression.self,
+            from: Data(#"{"op":"and","expressions":[{"op":"equal","type":"string","lhs":{"var":"role"},"rhs":"Engineer"},{"op":"not","expression":{"op":"equal","type":"string","lhs":{"var":"role"},"rhs":"Designer"}}]}"#.utf8)
+        )
+        #expect(try logic.evaluate(variables: variables))
+        
+        let dates = try decoder.decode(
+            ConditionalExpression.self,
+            from: Data(#"{"op":"and","expressions":[{"op":"before","lhs":{"var":"deadline"},"rhs":{"var":"reviewDate"},"orEqual":true},{"op":"after","lhs":{"var":"reviewDate"},"rhs":{"date":"2026-01-01"}},{"op":"sameDay","lhs":{"var":"reviewDate"},"rhs":{"date":"2026-06-20"}}]}"#.utf8)
+        )
+        #expect(try dates.evaluate(variables: variables))
+    }
+    
+    @Test func programEncodingOmitsRuntimeStepState() throws {
+        let program = try decodeBundledSampleProgram()
+        let data = try JSONEncoder.checklistd.encode(program)
+        let json = try #require(String(data: data, encoding: .utf8))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let steps = try #require(object["steps"] as? [[String: Any]])
+        let deadVolumeStep = try #require(steps.first { $0["key"] as? String == "Vdead" })
+        let deadVolumeInput = try #require(deadVolumeStep["input"] as? [String: Any])
+        let deadVolumeOptions = try #require(deadVolumeInput["options"] as? [String: Any])
+        
+        #expect(json.contains(#""defaultValue""#))
+        #expect(deadVolumeOptions["type"] as? String == "float")
+        #expect(deadVolumeOptions["values"] as? [Double] == [0.5, 0.7, 1])
+        #expect(steps.allSatisfy { $0["computedValue"] == nil })
+        #expect(steps.allSatisfy { $0["result"] == nil })
+        #expect(steps.allSatisfy { $0["value"] == nil })
+    }
+    
+    @Test func activeStepEncodingStoresRuntimeStepState() throws {
+        let program = try decodeBundledSampleProgram()
+        let inputStep = try #require(program.steps.compactMap { $0.step as? InputStep }.first)
+        var runtimeInputStep = inputStep
+        runtimeInputStep.value = .bool(bool: true)
+        var activeStep = ActiveStep(stepEnvelope: StepEnvelope(step: inputStep))
+        activeStep.computedStep = StepEnvelope(step: runtimeInputStep)
+        
+        let data = try JSONEncoder.checklistd.encode(activeStep)
+        let json = try #require(String(data: data, encoding: .utf8))
+        
+        #expect(json.contains(#""defaultValue""#))
+        #expect(json.contains(#""value":true"#))
+    }
+    
+    @Test func legacyStepWrapperDoesNotDecode() throws {
+        let legacyJSON = Data(
+            """
+            {
+                "version": 1,
+                "title": "Legacy",
+                "authorName": "Arc",
+                "description": "Old wrapper shape",
+                "steps": [
+                    {
+                        "type": "text",
+                        "step": {
+                            "type": "text",
+                            "metadata": { "id": "old" },
+                            "message": "Old shape"
+                        }
+                    }
+                ]
+            }
+            """.utf8
+        )
+        
+        var didThrow = false
+        do {
+            _ = try JSONDecoder.checklistd.decode(versioned: Program.self, from: legacyJSON)
+            Issue.record("Legacy step wrapper unexpectedly decoded.")
+        } catch {
+            didThrow = true
+        }
+        
+        #expect(didThrow)
+    }
+    
+    private func decodeBundledSampleProgram() throws -> Program {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("test.json")
+        let data = try Data(contentsOf: testFileURL)
+        return try JSONDecoder.checklistd.decode(versioned: Program.self, from: data)
+    }
+    
+    private static func decodeDate(_ value: String) throws -> Date {
+        try JSONDecoder.checklistd.decode(Date.self, from: Data(#""\#(value)""#.utf8))
     }
 }

@@ -208,10 +208,24 @@ struct InputStepView: View {
                 TextField("Value", text: textBinding)
                     .textFieldStyle(.roundedBorder)
                     .checklistdTextInputAutocapitalization()
+            case .int(_, _, let options) where options?.isEmpty == false:
+                Picker("Value", selection: intPickerBinding(options: options!)) {
+                    Text("Select").tag(nil as Int?)
+                    ForEach(options!, id: \.self) { option in
+                        Text(String(option)).tag(Optional(option))
+                    }
+                }
             case .int:
                 TextField("Value", text: intBinding)
                     .textFieldStyle(.roundedBorder)
                     .checklistdKeyboardType(.numberPad)
+            case .float(_, _, let options) where options?.isEmpty == false:
+                Picker("Value", selection: floatPickerBinding(options: options!)) {
+                    Text("Select").tag(nil as Float?)
+                    ForEach(options!, id: \.self) { option in
+                        Text(String(option)).tag(Optional(option))
+                    }
+                }
             case .float:
                 TextField("Value", text: floatBinding)
                     .textFieldStyle(.roundedBorder)
@@ -287,6 +301,42 @@ struct InputStepView: View {
             set: { newValue in
                 guard !newValue.isEmpty else { return }
                 setVariable(.string(value: newValue))
+            }
+        )
+    }
+    
+    private func intPickerBinding(options: [Int]) -> Binding<Int?> {
+        Binding(
+            get: {
+                guard case .int(let value) = step.value, options.contains(value) else {
+                    return nil
+                }
+                return value
+            },
+            set: { newValue in
+                guard let newValue else {
+                    clearVariable()
+                    return
+                }
+                setVariable(.int(int: newValue))
+            }
+        )
+    }
+    
+    private func floatPickerBinding(options: [Float]) -> Binding<Float?> {
+        Binding(
+            get: {
+                guard case .float(let value) = step.value, options.contains(value) else {
+                    return nil
+                }
+                return value
+            },
+            set: { newValue in
+                guard let newValue else {
+                    clearVariable()
+                    return
+                }
+                setVariable(.float(float: newValue))
             }
         )
     }

@@ -151,9 +151,41 @@ struct ActiveStep: Codable {
     var computedStep: StepEnvelope
     var isCompleted: Bool = false
     
+    private enum CodingKeys: String, CodingKey {
+        case stepEnvelope
+        case computedStep
+        case isCompleted
+    }
+    
     init(stepEnvelope: StepEnvelope) {
         self.stepEnvelope = stepEnvelope
         self.computedStep = stepEnvelope
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.stepEnvelope = try StepEnvelope(
+            from: container.superDecoder(forKey: .stepEnvelope),
+            mode: .program
+        )
+        self.computedStep = try StepEnvelope(
+            from: container.superDecoder(forKey: .computedStep),
+            mode: .execution
+        )
+        self.isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try stepEnvelope.encode(
+            to: container.superEncoder(forKey: .stepEnvelope),
+            mode: .program
+        )
+        try computedStep.encode(
+            to: container.superEncoder(forKey: .computedStep),
+            mode: .execution
+        )
+        try container.encode(isCompleted, forKey: .isCompleted)
     }
     
     func compute(with variables: [String: Variable], updateInputValueFromVariables: Bool) throws -> ActiveStep {

@@ -21,6 +21,51 @@ enum Variable: Codable {
     case int(int: Int)
     case bool(bool: Bool)
     case float(float: Float)
+    
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case value
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(StorageMedium.self, forKey: .type)
+        
+        switch type {
+        case .string:
+            self = .string(value: try container.decode(String.self, forKey: .value))
+        case .date:
+            self = .date(date: try container.decode(Date.self, forKey: .value))
+        case .int:
+            self = .int(int: try container.decode(Int.self, forKey: .value))
+        case .bool:
+            self = .bool(bool: try container.decode(Bool.self, forKey: .value))
+        case .float:
+            self = .float(float: try container.decode(Float.self, forKey: .value))
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        switch self {
+        case .string(let value):
+            try container.encode(StorageMedium.string, forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .date(let date):
+            try container.encode(StorageMedium.date, forKey: .type)
+            try container.encode(date, forKey: .value)
+        case .int(let int):
+            try container.encode(StorageMedium.int, forKey: .type)
+            try container.encode(int, forKey: .value)
+        case .bool(let bool):
+            try container.encode(StorageMedium.bool, forKey: .type)
+            try container.encode(bool, forKey: .value)
+        case .float(let float):
+            try container.encode(StorageMedium.float, forKey: .type)
+            try container.encode(float, forKey: .value)
+        }
+    }
 }
 
 extension Variable {
@@ -133,4 +178,3 @@ struct Parser {
         return result
     }
 }
-
