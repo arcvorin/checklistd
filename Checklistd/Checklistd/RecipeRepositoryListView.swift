@@ -12,14 +12,7 @@ struct RecipeRepositoryListView: View {
     
     var body: some View {
         List(repositories, id: \.url) { repository in
-            NavigationLink {
-                RecipeListView(
-                    repository: repository,
-                    createExecution: { program in
-                        createExecution(program, repository.url)
-                    }
-                )
-            } label: {
+            NavigationLink(value: repository.url) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(repository.name)
                         .font(.headline)

@@ -11,7 +11,7 @@ struct ExecutionListView: View {
     
     var body: some View {
         List(repository.files, id: \.fileURL) { file in
-            NavigationLink(value: file.fileURL) {
+            NavigationLink(value: ExecutionRoute.file(file.fileURL)) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(file.execution.program.title)
                         .font(.headline)

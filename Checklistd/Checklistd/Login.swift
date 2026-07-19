@@ -19,12 +19,17 @@ struct LoginView: View {
     @State var executionRepositories: [Sync.ExecutionRepositoryDetails] = []
     @State var isAuthenticated = false
     @State private var selectedTab: AppTab = .setup
-    @State private var executionPath: [URL] = []
+    @State private var recipePath: [String] = []
+    @State private var executionPath: [ExecutionRoute] = []
     @State private var setupStateVersion = 0
     @State private var isContinuing = false
     @State private var isShowingExecutionPicker: Bool = false
     @State private var selectedRecipeRepo: OctoKit.Repository? = nil
     @State private var selectedExecutionRepoURL: String = ""
+    @State private var isSyncing = false
+    @State private var isCreatingExecution = false
+    @State private var isPushingExecution = false
+    @State private var statusMessage: String? = nil
     
     private enum AppTab {
         case setup
@@ -45,12 +50,25 @@ struct LoginView: View {
                     }
                     .tag(AppTab.setup)
                     
-                    NavigationStack {
+                    NavigationStack(path: $recipePath) {
                         RecipeRepositoryListView(
                             repositories: recipeRepositories,
                             createExecution: createExecution
                         )
                         .navigationTitle("Recipe Repos")
+                        .navigationDestination(for: String.self) { repositoryURL in
+                            if let repository = recipeRepository(for: repositoryURL) {
+                                RecipeListView(
+                                    repository: repository,
+                                    createExecution: { program in
+                                        createExecution(for: program, recipeRepositoryURL: repository.url)
+                                    }
+                                )
+                            } else {
+                                Text("Recipe repository not found")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .tabItem {
                         Label("Recipes", systemImage: "list.bullet.rectangle")
@@ -60,12 +78,24 @@ struct LoginView: View {
                     NavigationStack(path: $executionPath) {
                         ExecutionRepositoryListView(repositories: executionRepositories)
                             .navigationTitle("Execution Repos")
-                            .navigationDestination(for: URL.self) { fileURL in
-                                if let file = executionFile(for: fileURL) {
-                                    ExecutionDetailView(file: file, sync: sync)
-                                } else {
-                                    Text("Execution not found")
-                                        .foregroundStyle(.secondary)
+                            .navigationDestination(for: ExecutionRoute.self) { route in
+                                switch route {
+                                case .repository(let repositoryURL):
+                                    if let repository = executionRepository(for: repositoryURL) {
+                                        ExecutionListView(repository: repository)
+                                    } else {
+                                        Text("Execution repository not found")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                case .file(let fileURL):
+                                    if let file = executionFile(for: fileURL) {
+                                        ExecutionDetailView(file: file, sync: sync)
+                                    } else {
+                                        Text("Execution not found")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                case .creating:
+                                    LoadingExecutionView(message: statusMessage ?? "Creating execution...")
                                 }
                             }
                     }
@@ -86,6 +116,12 @@ struct LoginView: View {
         }
         .sheet(isPresented: $isShowingExecutionPicker) {
             executionPickerSheet
+        }
+        .overlay(alignment: .bottom) {
+            if let statusMessage {
+                StatusBanner(message: statusMessage, isLoading: isSyncing || isCreatingExecution || isPushingExecution)
+                    .padding()
+            }
         }
     }
     
@@ -115,12 +151,12 @@ struct LoginView: View {
             Spacer()
             Button(syncButtonTitle) {
                 if isSetupComplete {
-                    continueToRecipes()
+                    syncInBackground(selectRecipesWhenDone: true)
                 } else {
                     saveSetup()
                 }
             }
-            .disabled(isContinuing)
+            .disabled(isContinuing || isSyncing)
             .padding()
         }
     }
@@ -163,6 +199,7 @@ struct LoginView: View {
                         refreshExecutionRepositories()
                         isShowingExecutionPicker = false
                         selectedRecipeRepo = nil
+                        syncInBackground(selectRecipesWhenDone: false)
                     }
                     Spacer()
                     Button("Remove Pair") {
@@ -195,14 +232,17 @@ struct LoginView: View {
         
         if sync.isAuthenticated() {
             isAuthenticated = true
+            statusMessage = "Loading repositories..."
             Task {
                 guard let repos = await sync.listRepos() else {
+                    statusMessage = nil
                     return
                 }
                 self.repos = repos
                 self.pairs = sync.listPairs()
                 refreshRecipeRepositories()
                 refreshExecutionRepositories()
+                statusMessage = nil
             }
         } else {
             isAuthenticated = false
@@ -220,30 +260,54 @@ struct LoginView: View {
         newPAT = ""
         setupStateVersion += 1
         
+        statusMessage = "Loading repositories..."
         Task {
             guard let repos = await sync.listRepos() else {
                 self.pairs = []
                 self.repos = []
+                self.statusMessage = "Could not load repositories"
                 return
             }
             self.repos = repos
             self.pairs = sync.listPairs()
             refreshRecipeRepositories()
             refreshExecutionRepositories()
+            statusMessage = nil
         }
     }
     
-    private func continueToRecipes() {
+    private func syncInBackground(selectRecipesWhenDone: Bool) {
+        guard !isSyncing else { return }
+        
         isContinuing = true
+        isSyncing = true
+        statusMessage = "Syncing repositories..."
+        recipePath = []
+        if selectRecipesWhenDone {
+            selectedTab = .recipes
+        }
         Task {
+            await Task.yield()
             await sync.pullRepos()
+            statusMessage = "Loading files..."
             let repositories = refreshRecipeRepositories()
             let executionRepositories = refreshExecutionRepositories()
             await MainActor.run {
                 recipeRepositories = repositories
                 self.executionRepositories = executionRepositories
-                selectedTab = .recipes
+                recipePath = []
+                if selectRecipesWhenDone {
+                    selectedTab = .recipes
+                }
                 isContinuing = false
+                isSyncing = false
+                statusMessage = "Sync complete"
+            }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await MainActor.run {
+                if !isSyncing && !isCreatingExecution && statusMessage == "Sync complete" {
+                    statusMessage = nil
+                }
             }
         }
     }
@@ -276,7 +340,14 @@ struct LoginView: View {
     }
     
     private func createExecution(for program: Program, recipeRepositoryURL: String) {
+        let creationID = UUID().uuidString
+        isCreatingExecution = true
+        statusMessage = "Creating execution..."
+        selectedTab = .executions
+        executionPath = [.creating(creationID)]
+        
         Task {
+            await Task.yield()
             do {
                 let file = try await sync.createExecution(
                     for: program,
@@ -286,10 +357,32 @@ struct LoginView: View {
                 await MainActor.run {
                     executionRepositories = repositories
                     selectedTab = .executions
-                    executionPath = [file.fileURL]
+                    executionPath = [.repository(file.repoURL), .file(file.fileURL)]
+                    isCreatingExecution = false
+                    isPushingExecution = true
+                    statusMessage = "Pushing execution..."
+                }
+                
+                await sync.pushRepos()
+                
+                await MainActor.run {
+                    isPushingExecution = false
+                    statusMessage = "Execution pushed"
+                }
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                await MainActor.run {
+                    if !isSyncing && !isCreatingExecution && !isPushingExecution && statusMessage == "Execution pushed" {
+                        statusMessage = nil
+                    }
                 }
             } catch {
                 print("Couldn't create execution: \(error)")
+                await MainActor.run {
+                    isCreatingExecution = false
+                    isPushingExecution = false
+                    statusMessage = "Couldn't create execution"
+                    executionPath = []
+                }
             }
         }
     }
@@ -299,6 +392,35 @@ struct LoginView: View {
             .flatMap(\.files)
             .first(where: { $0.fileURL == fileURL })
     }
+    
+    private func recipeRepository(for repositoryURL: String) -> Sync.RecipeRepositoryDetails? {
+        recipeRepositories
+            .first(where: { $0.url == repositoryURL })
+    }
+    
+    private func executionRepository(for repositoryURL: String) -> Sync.ExecutionRepositoryDetails? {
+        executionRepositories
+            .first(where: { $0.url == repositoryURL })
+    }
 }
 
-
+private struct StatusBanner: View {
+    let message: String
+    let isLoading: Bool
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Text(message)
+                .font(.callout)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 8)
+    }
+}

@@ -11,9 +11,7 @@ struct ExecutionRepositoryListView: View {
     
     var body: some View {
         List(repositories, id: \.url) { repository in
-            NavigationLink {
-                ExecutionListView(repository: repository)
-            } label: {
+            NavigationLink(value: ExecutionRoute.repository(repository.url)) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(repository.name)
                         .font(.headline)

@@ -285,7 +285,6 @@ class Sync {
         )
         
         _ = listExecutions()
-        await pushRepos()
         return details
     }
     
@@ -293,7 +292,9 @@ class Sync {
         do {
             try write(execution: execution, to: fileURL)
             _ = listExecutions()
-            await pushRepos()
+            Task {
+                await pushRepos()
+            }
         } catch {
             print("Couldn't save execution file \(fileURL.path): \(error)")
         }
