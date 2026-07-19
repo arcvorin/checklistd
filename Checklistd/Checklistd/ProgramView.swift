@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct ContentView: View {
+struct ProgramView: View {
     @Binding var execution: Execution?
     
     var body: some View {
@@ -409,5 +409,5 @@ struct UnsupportedStepView: View {
 }
 
 #Preview {
-    ContentView(execution: .constant(nil))
+    ProgramView(execution: .constant(nil))
 }
