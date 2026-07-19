@@ -197,6 +197,93 @@ struct ChecklistdTests {
         #expect(decoded.updatedAt == updatedAt)
     }
     
+    @Test func executionCreationRecordsSignedHistoryAndActiveStepActor() throws {
+        let program = try decodeSingleTextInputProgram()
+        let actor = GitCommitIdentity(name: "Arc Vorin", email: "arc@example.com")
+        var execution = Execution(
+            name: "Morning prep",
+            createdByName: actor.name,
+            createdByEmail: actor.email,
+            program: program
+        )
+        
+        execution.recordCreation(actor: actor)
+        try execution.run(actor: actor)
+        
+        #expect(execution.history.map(\.type) == [.executionCreated, .stepActivated])
+        #expect(execution.history.allSatisfy { $0.actorName == actor.name && $0.actorEmail == actor.email })
+        #expect(execution.activeSteps.first?.actorName == actor.name)
+        #expect(execution.activeSteps.first?.actorEmail == actor.email)
+    }
+    
+    @Test func freeTextInputChangesCoalesceForSameActorOnly() throws {
+        let program = try decodeSingleTextInputProgram()
+        let inputStep = try #require(program.steps.first?.step as? InputStep)
+        let arc = GitCommitIdentity(name: "Arc Vorin", email: "arc@example.com")
+        let supervisor = GitCommitIdentity(name: "Supervisor", email: "supervisor@example.com")
+        var execution = Execution(program: program)
+        try execution.run(actor: arc)
+        
+        try execution.setVariable(name: inputStep.key, value: .string(value: "A"), actor: arc, inputStep: inputStep)
+        try execution.setVariable(name: inputStep.key, value: .string(value: "AB"), actor: arc, inputStep: inputStep)
+        try execution.setVariable(name: inputStep.key, value: .string(value: "ABC"), actor: supervisor, inputStep: inputStep)
+        
+        let inputEvents = execution.history.filter { $0.type == .inputChanged }
+        #expect(inputEvents.count == 2)
+        #expect(inputEvents.first?.value?.interpolatedValue == "AB")
+        #expect(inputEvents.first?.actorEmail == arc.email)
+        #expect(inputEvents.last?.value?.interpolatedValue == "ABC")
+        #expect(inputEvents.last?.actorEmail == supervisor.email)
+        #expect(execution.activeSteps.first?.actorName == supervisor.name)
+        #expect(execution.activeSteps.first?.actorEmail == supervisor.email)
+    }
+    
+    @Test func nonTextInputChangesAndClearDoNotCoalesce() throws {
+        let program = try decodeSingleBoolInputProgram()
+        let inputStep = try #require(program.steps.first?.step as? InputStep)
+        let actor = GitCommitIdentity(name: "Arc Vorin", email: "arc@example.com")
+        var execution = Execution(program: program)
+        try execution.run(actor: actor)
+        
+        try execution.setVariable(name: inputStep.key, value: .bool(bool: true), actor: actor, inputStep: inputStep)
+        try execution.setVariable(name: inputStep.key, value: .bool(bool: false), actor: actor, inputStep: inputStep)
+        try execution.clearVariable(name: inputStep.key, actor: actor, inputStep: inputStep)
+        
+        let inputChangedEvents = execution.history.filter { $0.type == .inputChanged }
+        #expect(inputChangedEvents.count == 2)
+        #expect(inputChangedEvents.map { $0.value?.interpolatedValue } == ["true", "false"])
+        #expect(execution.history.contains { $0.type == .inputCleared && $0.previousValue?.interpolatedValue == "false" })
+    }
+    
+    @Test func completeReopenAndMarkdownAuditIncludeSignedEvents() throws {
+        let program = try decodeSingleTextInputProgram()
+        let inputStep = try #require(program.steps.first?.step as? InputStep)
+        let actor = GitCommitIdentity(name: "Arc Vorin", email: "arc@example.com")
+        var execution = Execution(
+            id: "execution-id",
+            name: "Custom run",
+            createdByName: actor.name,
+            createdByEmail: actor.email,
+            program: program
+        )
+        execution.recordCreation(actor: actor)
+        try execution.run(actor: actor)
+        try execution.setVariable(name: inputStep.key, value: .string(value: "Ready"), actor: actor, inputStep: inputStep)
+        try execution.completeStep(actor: actor)
+        try execution.reopenStep(at: 0, actor: actor)
+        
+        #expect(execution.history.contains { $0.type == .stepCompleted && $0.actorEmail == actor.email })
+        #expect(execution.history.contains { $0.type == .stepReopened && $0.removedStepIds?.contains("done") == true })
+        
+        let markdown = execution.markdownAudit()
+        #expect(markdown.contains("Custom run"))
+        #expect(markdown.contains("Tiny Program"))
+        #expect(markdown.contains("Arc Vorin <arc@example.com>"))
+        #expect(markdown.contains("inputChanged"))
+        #expect(markdown.contains("value `Ready`"))
+        #expect(markdown.contains("stepReopened"))
+    }
+    
     @Test func executionAuditMetadataIsRequired() throws {
         let program = try decodeBundledSampleProgram()
         let data = try JSONEncoder.checklistd.encode(Execution(id: "missing-audit", program: program))
@@ -207,6 +294,18 @@ struct ChecklistdTests {
         #expect(throws: (any Error).self) {
             _ = try JSONDecoder.checklistd.decode(Execution.self, from: missingMetadataData)
         }
+    }
+    
+    @Test func executionNameDefaultsToEmptyWhenMissing() throws {
+        let program = try decodeBundledSampleProgram()
+        let data = try JSONEncoder.checklistd.encode(Execution(id: "missing-name", program: program))
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "name")
+        let missingNameData = try JSONSerialization.data(withJSONObject: object)
+        
+        let decoded = try JSONDecoder.checklistd.decode(Execution.self, from: missingNameData)
+        
+        #expect(decoded.name == "")
     }
     
     @Test func legacyStepWrapperDoesNotDecode() throws {
@@ -249,6 +348,66 @@ struct ChecklistdTests {
             .appendingPathComponent("test.json")
         let data = try Data(contentsOf: testFileURL)
         return try JSONDecoder.checklistd.decode(versioned: Program.self, from: data)
+    }
+    
+    private func decodeSingleTextInputProgram() throws -> Program {
+        try decodeProgram(
+            """
+            {
+                "version": 1,
+                "title": "Tiny Program",
+                "authorName": "Arc",
+                "description": "Small text input program",
+                "steps": [
+                    {
+                        "type": "input",
+                        "metadata": { "id": "name-input", "name": "Name" },
+                        "input": { "type": "text" },
+                        "label": "Name",
+                        "key": "name",
+                        "next": "done"
+                    },
+                    {
+                        "type": "text",
+                        "metadata": { "id": "done", "name": "Done" },
+                        "message": "Done"
+                    }
+                ]
+            }
+            """
+        )
+    }
+    
+    private func decodeSingleBoolInputProgram() throws -> Program {
+        try decodeProgram(
+            """
+            {
+                "version": 1,
+                "title": "Bool Program",
+                "authorName": "Arc",
+                "description": "Small bool input program",
+                "steps": [
+                    {
+                        "type": "input",
+                        "metadata": { "id": "enabled-input", "name": "Enabled" },
+                        "input": { "type": "bool" },
+                        "label": "Enabled",
+                        "key": "enabled",
+                        "next": "done"
+                    },
+                    {
+                        "type": "text",
+                        "metadata": { "id": "done", "name": "Done" },
+                        "message": "Done"
+                    }
+                ]
+            }
+            """
+        )
+    }
+    
+    private func decodeProgram(_ json: String) throws -> Program {
+        try JSONDecoder.checklistd.decode(versioned: Program.self, from: Data(json.utf8))
     }
     
     private static func decodeDate(_ value: String) throws -> Date {

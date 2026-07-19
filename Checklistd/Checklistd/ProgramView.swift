@@ -9,6 +9,9 @@ import SwiftUI
 
 struct ProgramView: View {
     @Binding var execution: Execution?
+    var currentActor: GitCommitIdentity? = nil
+    var isReadOnly: Bool = false
+    var stepHistoryEvents: [String: ExecutionHistoryEvent] = [:]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -45,6 +48,9 @@ struct ProgramView: View {
                             activeStep: activeStep,
                             activeStepIndex: index,
                             isCurrentStep: index == execution.activeSteps.indices.last && !execution.isCompleted,
+                            currentActor: currentActor,
+                            isReadOnly: isReadOnly,
+                            historyEvent: stepHistoryEvents[activeStep.stepEnvelope.step.id],
                             execution: $execution
                         )
                     }
@@ -99,6 +105,9 @@ struct StepView: View {
     let activeStep: ActiveStep
     let activeStepIndex: Int
     let isCurrentStep: Bool
+    let currentActor: GitCommitIdentity?
+    let isReadOnly: Bool
+    let historyEvent: ExecutionHistoryEvent?
     @Binding var execution: Execution?
     @State private var isConfirmingReopen = false
     
@@ -107,8 +116,15 @@ struct StepView: View {
     }
     
     private var canCompleteCurrentStep: Bool {
+        guard !isReadOnly else { return false }
         guard isCurrentStep else { return false }
         return (try? step.canComplete(with: execution?.variables ?? [:])) == true
+    }
+
+    private var isDifferentActor: Bool {
+        guard let currentActor else { return false }
+        guard !activeStep.actorName.isEmpty || !activeStep.actorEmail.isEmpty else { return false }
+        return activeStep.actorName != currentActor.name || activeStep.actorEmail != currentActor.email
     }
     
     var body: some View {
@@ -116,7 +132,7 @@ struct StepView: View {
             
             Button {
                 if canCompleteCurrentStep {
-                    try? execution?.completeStep()
+                    try? execution?.completeStep(actor: currentActor)
                 }
             } label: {
                 Image(systemName: activeStep.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -124,16 +140,35 @@ struct StepView: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .disabled(!activeStep.isCompleted && !canCompleteCurrentStep)
+            .disabled(isReadOnly || (!activeStep.isCompleted && !canCompleteCurrentStep))
+            .opacity(isReadOnly ? 0.45 : 1)
             .padding(.top, 6)
-            stepContent
-                .opacity(activeStep.isCompleted ? 0.6 : 1)
+            VStack(alignment: .leading, spacing: 4) {
+                stepContent
+                    .opacity(activeStep.isCompleted ? 0.6 : 1)
+                if let historyEvent {
+                    Text(historyDescription(for: historyEvent))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if isReadOnly, !activeStep.actorName.isEmpty || !activeStep.actorEmail.isEmpty {
+                    Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if isDifferentActor {
+                    Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, isDifferentActor ? 8 : 0)
+            .background(isDifferentActor ? Color.accentColor.opacity(0.08) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .onTapGesture {
-            if activeStep.isCompleted {
+            if !isReadOnly && activeStep.isCompleted {
                 isConfirmingReopen = true
-            } else if canCompleteCurrentStep {
-                try? execution?.completeStep()
             }
         }
         .confirmationDialog(
@@ -142,7 +177,7 @@ struct StepView: View {
             titleVisibility: .visible
         ) {
             Button("Go Back", role: .destructive) {
-                try? execution?.reopenStep(at: activeStepIndex)
+                try? execution?.reopenStep(at: activeStepIndex, actor: currentActor)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -161,7 +196,14 @@ struct StepView: View {
                 }
             case .input:
                 if let inputStep = step as? InputStep {
-                    InputStepView(step: inputStep, isCompleted: activeStep.isCompleted, isCurrentStep: isCurrentStep, execution: $execution)
+                    InputStepView(
+                        step: inputStep,
+                        isCompleted: activeStep.isCompleted,
+                        isCurrentStep: isCurrentStep,
+                        currentActor: currentActor,
+                        isReadOnly: isReadOnly,
+                        execution: $execution
+                    )
                 } else {
                     UnsupportedStepView(step: step)
                 }
@@ -170,6 +212,10 @@ struct StepView: View {
             case .conditional:
             UnsupportedStepView(step: step)
         }
+    }
+    
+    private func historyDescription(for event: ExecutionHistoryEvent) -> String {
+        "\(event.type.rawValue) by \(event.actorName) <\(event.actorEmail)> at \(event.timestamp.formatted(date: .abbreviated, time: .standard))"
     }
 }
 
@@ -188,6 +234,8 @@ struct InputStepView: View {
     let step: InputStep
     let isCompleted: Bool
     let isCurrentStep: Bool
+    let currentActor: GitCommitIdentity?
+    let isReadOnly: Bool
     @Binding var execution: Execution?
     
     var body: some View {
@@ -196,7 +244,7 @@ struct InputStepView: View {
                 .font(.headline)
                 .strikethrough(isCompleted)
             inputControl
-                .disabled(!isCurrentStep)
+                .disabled(isReadOnly || !isCurrentStep)
         }
         .padding(.vertical, 4)
     }
@@ -408,13 +456,22 @@ struct InputStepView: View {
     
     private func setVariable(_ value: Variable) {
         guard var currentExecution = execution else { return }
-        try? currentExecution.setVariable(name: step.key, value: value)
+        try? currentExecution.setVariable(
+            name: step.key,
+            value: value,
+            actor: currentActor,
+            inputStep: step
+        )
         execution = currentExecution
     }
     
     private func clearVariable() {
         guard var currentExecution = execution else { return }
-        try? currentExecution.clearVariable(name: step.key)
+        try? currentExecution.clearVariable(
+            name: step.key,
+            actor: currentActor,
+            inputStep: step
+        )
         execution = currentExecution
     }
 }

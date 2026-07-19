@@ -290,13 +290,15 @@ class Sync {
             updatedAt: createdAt,
             program: program
         )
-        try execution.run()
+        execution.recordCreation(actor: identity)
+        try execution.run(actor: identity)
         
         let fileURL = executionRepoDir.appendingPathComponent(
             executionFileName(for: program, executionName: execution.name),
             isDirectory: false
         )
         try write(execution: execution, to: fileURL)
+        try writeMarkdown(for: execution, jsonFileURL: fileURL)
         let details = ExecutionFileDetails(
             repoURL: pair.executionURL,
             fileURL: fileURL,
@@ -313,6 +315,7 @@ class Sync {
             var updatedExecution = execution
             updatedExecution.updatedAt = Date()
             try write(execution: updatedExecution, to: fileURL)
+            try writeMarkdown(for: updatedExecution, jsonFileURL: fileURL)
             _ = listExecutions()
             Task {
                 await pushRepos()
@@ -325,6 +328,12 @@ class Sync {
     private func write(execution: Execution, to fileURL: URL) throws {
         let data = try JSONEncoder.checklistd.encode(execution)
         try data.write(to: fileURL, options: [.atomic])
+    }
+    
+    private func writeMarkdown(for execution: Execution, jsonFileURL: URL) throws {
+        let markdownURL = jsonFileURL.deletingPathExtension().appendingPathExtension("md")
+        let data = Data(execution.markdownAudit().utf8)
+        try data.write(to: markdownURL, options: [.atomic])
     }
     
     private func executionFileName(for program: Program, executionName: String) -> String {
