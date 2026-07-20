@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ProgramView: View {
     @Binding var execution: Execution?
-    var currentActor: GitCommitIdentity? = nil
+    var currentActor: () -> GitCommitIdentity? = { nil }
     var isReadOnly: Bool = false
     var stepHistoryEvents: [String: ExecutionHistoryEvent] = [:]
     
@@ -105,7 +105,7 @@ struct StepView: View {
     let activeStep: ActiveStep
     let activeStepIndex: Int
     let isCurrentStep: Bool
-    let currentActor: GitCommitIdentity?
+    let currentActor: () -> GitCommitIdentity?
     let isReadOnly: Bool
     let historyEvent: ExecutionHistoryEvent?
     @Binding var execution: Execution?
@@ -122,7 +122,7 @@ struct StepView: View {
     }
 
     private var isDifferentActor: Bool {
-        guard let currentActor else { return false }
+        guard let currentActor = currentActor() else { return false }
         guard !activeStep.actorName.isEmpty || !activeStep.actorEmail.isEmpty else { return false }
         return activeStep.actorName != currentActor.name || activeStep.actorEmail != currentActor.email
     }
@@ -132,7 +132,7 @@ struct StepView: View {
             
             Button {
                 if canCompleteCurrentStep {
-                    try? execution?.completeStep(actor: currentActor)
+                    try? execution?.completeStep(actor: currentActor())
                 }
             } label: {
                 Image(systemName: activeStep.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -177,7 +177,7 @@ struct StepView: View {
             titleVisibility: .visible
         ) {
             Button("Go Back", role: .destructive) {
-                try? execution?.reopenStep(at: activeStepIndex, actor: currentActor)
+                try? execution?.reopenStep(at: activeStepIndex, actor: currentActor())
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -234,7 +234,7 @@ struct InputStepView: View {
     let step: InputStep
     let isCompleted: Bool
     let isCurrentStep: Bool
-    let currentActor: GitCommitIdentity?
+    let currentActor: () -> GitCommitIdentity?
     let isReadOnly: Bool
     @Binding var execution: Execution?
     
@@ -459,7 +459,7 @@ struct InputStepView: View {
         try? currentExecution.setVariable(
             name: step.key,
             value: value,
-            actor: currentActor,
+            actor: currentActor(),
             inputStep: step
         )
         execution = currentExecution
@@ -469,7 +469,7 @@ struct InputStepView: View {
         guard var currentExecution = execution else { return }
         try? currentExecution.clearVariable(
             name: step.key,
-            actor: currentActor,
+            actor: currentActor(),
             inputStep: step
         )
         execution = currentExecution

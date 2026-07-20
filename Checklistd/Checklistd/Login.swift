@@ -154,12 +154,19 @@ struct LoginView: View {
                 }
                 .padding()
             }
-            TextField("Git commit name", text: $gitCommitName)
-                .padding(.horizontal)
-                .textFieldStyle(.roundedBorder)
-            TextField("Git commit email", text: $gitCommitEmail)
-                .padding(.horizontal)
-                .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Git identity")
+                    .font(.headline)
+                LabeledContent("Name") {
+                    Text(gitCommitName.isEmpty ? "Not synced" : gitCommitName)
+                        .foregroundStyle(gitCommitName.isEmpty ? .secondary : .primary)
+                }
+                LabeledContent("Email") {
+                    Text(gitCommitEmail.isEmpty ? "Not synced" : gitCommitEmail)
+                        .foregroundStyle(gitCommitEmail.isEmpty ? .secondary : .primary)
+                }
+            }
+            .padding(.horizontal)
             List(repos, id: \.id) { repo in
                 repoPairingRow(repo)
             }
@@ -247,8 +254,26 @@ struct LoginView: View {
         
         if sync.isAuthenticated() {
             isAuthenticated = true
-            statusMessage = "Loading repositories..."
+            statusMessage = "Loading GitHub profile..."
             Task {
+                do {
+                    let identity = try await sync.syncGitCommitIdentityFromGitHubProfile()
+                    await MainActor.run {
+                        gitCommitName = identity.name
+                        gitCommitEmail = identity.email
+                        setupStateVersion += 1
+                    }
+                } catch {
+                    print("Couldn't sync GitHub profile: \(error)")
+                    await MainActor.run {
+                        statusMessage = "Could not load GitHub profile"
+                    }
+                    return
+                }
+                
+                await MainActor.run {
+                    statusMessage = "Loading repositories..."
+                }
                 guard let repos = await sync.listRepos() else {
                     statusMessage = nil
                     return
@@ -265,8 +290,6 @@ struct LoginView: View {
     }
     
     private func saveSetup() {
-        sync.setGitCommitIdentity(name: gitCommitName, email: gitCommitEmail)
-        
         if !newPAT.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             _ = sync.setPAT(newPAT)
         }
@@ -275,8 +298,27 @@ struct LoginView: View {
         newPAT = ""
         setupStateVersion += 1
         
-        statusMessage = "Loading repositories..."
+        statusMessage = "Loading GitHub profile..."
         Task {
+            do {
+                let identity = try await sync.syncGitCommitIdentityFromGitHubProfile()
+                await MainActor.run {
+                    gitCommitName = identity.name
+                    gitCommitEmail = identity.email
+                    setupStateVersion += 1
+                    statusMessage = "Loading repositories..."
+                }
+            } catch {
+                print("Couldn't sync GitHub profile: \(error)")
+                await MainActor.run {
+                    self.pairs = []
+                    self.repos = []
+                    self.statusMessage = "Could not load GitHub profile"
+                    setupStateVersion += 1
+                }
+                return
+            }
+            
             guard let repos = await sync.listRepos() else {
                 self.pairs = []
                 self.repos = []

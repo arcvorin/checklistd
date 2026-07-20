@@ -56,10 +56,12 @@ class Sync {
         case missingExecutionPair
         case missingExecutionRepository
         case missingGitCommitIdentity
+        case missingGitHubProfile
     }
     
     private lazy var keychain = KeychainSwift()
     private var octokit: Octokit?
+    private var pushTask: Task<Void, Never>?
     func prepare() {
         keychain.synchronizable = true
         guard let pat = getPAT() else {
@@ -89,6 +91,8 @@ class Sync {
     
     func setPAT(_ pat: String?) -> Bool {
         guard let pat = pat else {
+            defaults.removeObject(forKey: DefaultsKey.gitCommitName)
+            defaults.removeObject(forKey: DefaultsKey.gitCommitEmail)
             return keychain.clear()
         }
         let result = keychain.set(pat, forKey: "pat")
@@ -123,6 +127,36 @@ class Sync {
             return nil
         }
         
+        return GitCommitIdentity(name: name, email: email)
+    }
+    
+    func syncGitCommitIdentityFromGitHubProfile() async throws -> GitCommitIdentity {
+        guard let octokit else {
+            throw SyncError.missingGitHubProfile
+        }
+        
+        let user = try await octokit.me()
+        let login = user.login?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let profileName = user.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let profileEmail = user.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
+        let name = !profileName.isEmpty ? profileName : login
+        let email: String
+        if !profileEmail.isEmpty {
+            email = profileEmail
+        } else if !login.isEmpty, user.id > 0 {
+            email = "\(user.id)+\(login)@users.noreply.github.com"
+        } else if !login.isEmpty {
+            email = "\(login)@users.noreply.github.com"
+        } else {
+            email = ""
+        }
+        
+        guard !name.isEmpty, !email.isEmpty else {
+            throw SyncError.missingGitHubProfile
+        }
+        
+        setGitCommitIdentity(name: name, email: email)
         return GitCommitIdentity(name: name, email: email)
     }
     
@@ -177,7 +211,7 @@ class Sync {
         let repos: [(name: String, url: String, files: [Program])] = recipeRepos.map{
             repo in
             let urlString = repo.url
-            let repoDir = localRepoDirectory(for: urlString)
+            let repoDir = Self.localRepoDirectory(for: urlString)
             guard let fileURLs = FileManager.default.enumerator(
                 at: repoDir,
                 includingPropertiesForKeys: [.isRegularFileKey],
@@ -222,7 +256,7 @@ class Sync {
         }
         
         let repos: [ExecutionRepositoryDetails] = executionRepos.map { repo in
-            let repoDir = localRepoDirectory(for: repo.url)
+            let repoDir = Self.localRepoDirectory(for: repo.url)
             guard let fileURLs = FileManager.default.enumerator(
                 at: repoDir,
                 includingPropertiesForKeys: [.isRegularFileKey],
@@ -268,7 +302,7 @@ class Sync {
             throw SyncError.missingExecutionPair
         }
         
-        let executionRepoDir = localRepoDirectory(for: pair.executionURL)
+        let executionRepoDir = Self.localRepoDirectory(for: pair.executionURL)
         if !FileManager.default.fileExists(atPath: executionRepoDir.path) {
             await pullRepos()
         }
@@ -297,8 +331,8 @@ class Sync {
             executionFileName(for: program, executionName: execution.name),
             isDirectory: false
         )
-        try write(execution: execution, to: fileURL)
-        try writeMarkdown(for: execution, jsonFileURL: fileURL)
+        try Self.write(execution: execution, to: fileURL)
+        try Self.writeMarkdown(for: execution, jsonFileURL: fileURL)
         let details = ExecutionFileDetails(
             repoURL: pair.executionURL,
             fileURL: fileURL,
@@ -314,31 +348,44 @@ class Sync {
         do {
             var updatedExecution = execution
             updatedExecution.updatedAt = Date()
-            try write(execution: updatedExecution, to: fileURL)
-            try writeMarkdown(for: updatedExecution, jsonFileURL: fileURL)
-            _ = listExecutions()
-            Task {
-                await pushRepos()
-            }
+            try await Task.detached(priority: .utility) {
+                try Self.write(execution: updatedExecution, to: fileURL)
+                try Self.writeMarkdown(for: updatedExecution, jsonFileURL: fileURL)
+            }.value
+            schedulePush()
         } catch {
             print("Couldn't save execution file \(fileURL.path): \(error)")
         }
     }
     
-    private func write(execution: Execution, to fileURL: URL) throws {
+    nonisolated private static func write(execution: Execution, to fileURL: URL) throws {
         let data = try JSONEncoder.checklistd.encode(execution)
         try data.write(to: fileURL, options: [.atomic])
     }
     
-    private func writeMarkdown(for execution: Execution, jsonFileURL: URL) throws {
+    nonisolated private static func writeMarkdown(for execution: Execution, jsonFileURL: URL) throws {
         let markdownURL = jsonFileURL.deletingPathExtension().appendingPathExtension("md")
         let data = Data(execution.markdownAudit().utf8)
         try data.write(to: markdownURL, options: [.atomic])
     }
     
+    private func schedulePush() {
+        pushTask?.cancel()
+        pushTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return
+            }
+            
+            guard !Task.isCancelled else { return }
+            await pushRepos()
+        }
+    }
+    
     private func executionFileName(for program: Program, executionName: String) -> String {
         let timestamp = DateFormatter.checklistdExecutionFileTimestamp.string(from: Date())
-        let timestampHash = String(sha256Hex(of: timestamp).prefix(8))
+        let timestampHash = String(Self.sha256Hex(of: timestamp).prefix(8))
         let userName = safeFileName(gitCommitName(), fallback: "user")
         let safeExecutionName = safeFileName(executionName, fallback: "")
         
@@ -372,7 +419,20 @@ class Sync {
         }
         
         let executionRepoURLs = Set(syncPairs().map(\.executionURL))
-        
+        await Task.detached(priority: .utility) {
+            await Self.pushExecutionRepositories(
+                executionRepoURLs,
+                pat: pat,
+                identity: identity
+            )
+        }.value
+    }
+    
+    nonisolated private static func pushExecutionRepositories(
+        _ executionRepoURLs: Set<String>,
+        pat: String,
+        identity: GitCommitIdentity
+    ) async {
         for urlString in executionRepoURLs {
             let repoDir = localRepoDirectory(for: urlString)
             
@@ -418,7 +478,7 @@ class Sync {
             let isExecution = urlAnnotated.2
             
             guard let remoteURL = URL(string: urlString) else { continue }
-            let repoDir = localRepoDirectory(for: urlString)
+            let repoDir = Self.localRepoDirectory(for: urlString)
             
             do {
                 if !FileManager.default.fileExists(atPath: repoDir.path) {
@@ -438,7 +498,7 @@ class Sync {
         }
     }
     
-    private func localRepoDirectory(for urlString: String) -> URL {
+    nonisolated private static func localRepoDirectory(for urlString: String) -> URL {
         let fileManager = FileManager.default
         let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let baseDir = (appSupport ?? fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!)
@@ -449,7 +509,7 @@ class Sync {
         return baseDir.appendingPathComponent(sha256Hex(of: urlString), isDirectory: true)
     }
     
-    private func sha256Hex(of string: String) -> String {
+    nonisolated private static func sha256Hex(of string: String) -> String {
         guard let data = string.data(using: .utf8) else { return String(string.hashValue) }
         #if canImport(CryptoKit)
         let digest = SHA256.hash(data: data)

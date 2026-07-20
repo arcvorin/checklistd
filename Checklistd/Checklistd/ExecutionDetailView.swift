@@ -30,7 +30,7 @@ struct ExecutionDetailView: View {
                     }
                 }
             ),
-            currentActor: sync.gitCommitIdentity()
+            currentActor: { sync.gitCommitIdentity() }
         )
         .navigationTitle(navigationTitle)
         .checklistdInlineNavigationTitle()
