@@ -70,15 +70,15 @@ struct Execution: Codable {
         
         self.id = try container.decode(String.self, forKey: .id)
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
-        self.createdByName = try container.decode(String.self, forKey: .createdByName)
-        self.createdByEmail = try container.decode(String.self, forKey: .createdByEmail)
-        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
-        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        self.createdByName = try container.decodeIfPresent(String.self, forKey: .createdByName) ?? ""
+        self.createdByEmail = try container.decodeIfPresent(String.self, forKey: .createdByEmail) ?? ""
+        self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
         self.program = try container.decode(Program.self, forKey: .program)
         self.programCounter = try container.decodeIfPresent(String.self, forKey: .programCounter)
         self.variables = try container.decodeIfPresent([String: Variable].self, forKey: .variables) ?? [:]
         self.activeSteps = try container.decodeIfPresent([ActiveStep].self, forKey: .activeSteps) ?? []
-        self.history = try container.decode([ExecutionHistoryEvent].self, forKey: .history)
+        self.history = try container.decodeIfPresent([ExecutionHistoryEvent].self, forKey: .history) ?? []
         self.isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
     }
     
@@ -625,8 +625,8 @@ struct ActiveStep: Codable {
             from: container.superDecoder(forKey: .computedStep),
             mode: .execution
         )
-        self.actorName = try container.decode(String.self, forKey: .actorName)
-        self.actorEmail = try container.decode(String.self, forKey: .actorEmail)
+        self.actorName = try container.decodeIfPresent(String.self, forKey: .actorName) ?? ""
+        self.actorEmail = try container.decodeIfPresent(String.self, forKey: .actorEmail) ?? ""
         self.isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
     }
     

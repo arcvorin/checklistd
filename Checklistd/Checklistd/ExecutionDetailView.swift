@@ -9,29 +9,44 @@ import SwiftUI
 struct ExecutionDetailView: View {
     let file: Sync.ExecutionFileDetails
     let sync: Sync
+    var onExecutionCompletionChanged: () -> Void = {}
     @State private var execution: Execution?
     @State private var saveTask: Task<Void, Never>?
+    @State private var lastSavedCompletionState: Bool
     
-    init(file: Sync.ExecutionFileDetails, sync: Sync) {
+    init(file: Sync.ExecutionFileDetails, sync: Sync, onExecutionCompletionChanged: @escaping () -> Void = {}) {
         self.file = file
         self.sync = sync
+        self.onExecutionCompletionChanged = onExecutionCompletionChanged
         _execution = State(initialValue: file.execution)
+        _lastSavedCompletionState = State(initialValue: file.execution.isCompleted)
     }
     
     var body: some View {
-        ProgramView(
-            execution: Binding(
-                get: { execution },
-                set: { newExecution in
-                    execution = newExecution
-                    
-                    if let newExecution {
-                        scheduleSave(newExecution)
+        VStack(spacing: 0) {
+            if execution?.isCompleted == true {
+                completedBanner
+                    .padding()
+                    .background(.bar)
+                
+                Divider()
+            }
+            
+            ProgramView(
+                execution: Binding(
+                    get: { execution },
+                    set: { newExecution in
+                        execution = newExecution
+                        
+                        if let newExecution {
+                            scheduleSave(newExecution)
+                        }
                     }
-                }
-            ),
-            currentActor: { sync.gitCommitIdentity() }
-        )
+                ),
+                currentActor: { sync.gitCommitIdentity() },
+                isReadOnly: execution?.isCompleted == true
+            )
+        }
         .navigationTitle(navigationTitle)
         .checklistdInlineNavigationTitle()
         .toolbar {
@@ -44,13 +59,15 @@ struct ExecutionDetailView: View {
                 .help("History")
             }
         }
-        .onDisappear {
-            saveTask?.cancel()
-            if let execution {
-                Task {
-                    await sync.saveExecution(execution, to: file.fileURL)
-                }
-            }
+    }
+
+    private var completedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+            Text("Execution complete")
+                .font(.headline)
+            Spacer()
         }
     }
     
@@ -71,6 +88,11 @@ struct ExecutionDetailView: View {
             }
             guard !Task.isCancelled else { return }
             await sync.saveExecution(execution, to: fileURL)
+            guard !Task.isCancelled else { return }
+            if execution.isCompleted != lastSavedCompletionState {
+                lastSavedCompletionState = execution.isCompleted
+                onExecutionCompletionChanged()
+            }
         }
     }
 }

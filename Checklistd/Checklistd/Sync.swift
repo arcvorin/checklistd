@@ -22,6 +22,11 @@ class Sync {
         static let gitCommitEmail = "gitCommitEmail"
     }
     
+    private enum KeychainKey {
+        static let prefix = "me.matusevich.Checklistd."
+        static let pat = "pat"
+    }
+    
     struct RecipeRepositoryDetails {
         let name: String
         let url: String
@@ -59,11 +64,14 @@ class Sync {
         case missingGitHubProfile
     }
     
-    private lazy var keychain = KeychainSwift()
+    private lazy var keychain: KeychainSwift = {
+        let keychain = KeychainSwift(keyPrefix: KeychainKey.prefix)
+        keychain.synchronizable = false
+        return keychain
+    }()
     private var octokit: Octokit?
     private var pushTask: Task<Void, Never>?
     func prepare() {
-        keychain.synchronizable = true
         guard let pat = getPAT() else {
             return
         }
@@ -81,7 +89,31 @@ class Sync {
     }
     
     private func getPAT() -> String? {
-        guard let pat = keychain.get("pat")?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let pat = readPAT(from: keychain) {
+            return pat
+        }
+        
+        let legacyKeychain = KeychainSwift()
+        if let pat = readPAT(from: legacyKeychain) {
+            _ = keychain.set(pat, forKey: KeychainKey.pat)
+            _ = legacyKeychain.delete(KeychainKey.pat)
+            return pat
+        }
+        
+        #if !os(macOS)
+        legacyKeychain.synchronizable = true
+        if let pat = readPAT(from: legacyKeychain) {
+            _ = keychain.set(pat, forKey: KeychainKey.pat)
+            _ = legacyKeychain.delete(KeychainKey.pat)
+            return pat
+        }
+        #endif
+        
+        return nil
+    }
+    
+    private func readPAT(from keychain: KeychainSwift) -> String? {
+        guard let pat = keychain.get(KeychainKey.pat)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !pat.isEmpty else {
             return nil
         }
@@ -93,9 +125,12 @@ class Sync {
         guard let pat = pat else {
             defaults.removeObject(forKey: DefaultsKey.gitCommitName)
             defaults.removeObject(forKey: DefaultsKey.gitCommitEmail)
-            return keychain.clear()
+            return keychain.delete(KeychainKey.pat)
         }
-        let result = keychain.set(pat, forKey: "pat")
+        let result = keychain.set(pat.trimmingCharacters(in: .whitespacesAndNewlines), forKey: KeychainKey.pat)
+        if !result {
+            print("Failed to save PAT to keychain: \(keychain.lastResultCode)")
+        }
         prepare()
         return result
     }
@@ -291,6 +326,38 @@ class Sync {
         
         executionRepositories = repos
         return repos
+    }
+    
+    func loadExecutionFileDetails(for fileURL: URL) async -> ExecutionFileDetails? {
+        let executionRepoURLs = syncPairs().map(\.executionURL)
+        return await Task.detached(priority: .userInitiated) {
+            Self.executionFileDetails(for: fileURL, executionRepoURLs: executionRepoURLs)
+        }.value
+    }
+    
+    nonisolated private static func executionFileDetails(
+        for fileURL: URL,
+        executionRepoURLs: [String]
+    ) -> ExecutionFileDetails? {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let execution = try JSONDecoder.checklistd.decode(Execution.self, from: data)
+            let repoURL = executionRepoURLs
+                .first { executionURL in
+                    let repoDirectory = Self.localRepoDirectory(for: executionURL)
+                    return fileURL.path.hasPrefix(repoDirectory.path)
+                } ?? ""
+            
+            return ExecutionFileDetails(
+                repoURL: repoURL,
+                fileURL: fileURL,
+                displayName: fileURL.deletingPathExtension().lastPathComponent,
+                execution: execution
+            )
+        } catch {
+            print("Couldn't read execution file \(fileURL.path): \(error)")
+            return nil
+        }
     }
     
     func createExecution(

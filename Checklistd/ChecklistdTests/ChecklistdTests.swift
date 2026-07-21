@@ -284,16 +284,22 @@ struct ChecklistdTests {
         #expect(markdown.contains("stepReopened"))
     }
     
-    @Test func executionAuditMetadataIsRequired() throws {
+    @Test func executionAuditMetadataDefaultsWhenMissing() throws {
         let program = try decodeBundledSampleProgram()
         let data = try JSONEncoder.checklistd.encode(Execution(id: "missing-audit", program: program))
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         object.removeValue(forKey: "createdByName")
+        object.removeValue(forKey: "createdByEmail")
+        object.removeValue(forKey: "createdAt")
+        object.removeValue(forKey: "updatedAt")
+        object.removeValue(forKey: "history")
         let missingMetadataData = try JSONSerialization.data(withJSONObject: object)
         
-        #expect(throws: (any Error).self) {
-            _ = try JSONDecoder.checklistd.decode(Execution.self, from: missingMetadataData)
-        }
+        let decoded = try JSONDecoder.checklistd.decode(Execution.self, from: missingMetadataData)
+        
+        #expect(decoded.createdByName == "")
+        #expect(decoded.createdByEmail == "")
+        #expect(decoded.history.isEmpty)
     }
     
     @Test func executionNameDefaultsToEmptyWhenMissing() throws {

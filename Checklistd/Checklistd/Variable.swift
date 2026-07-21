@@ -80,9 +80,19 @@ extension Variable {
             case .bool(let bool):
                 String(bool)
             case .float(let float):
-                String(float)
+                Self.compactFloatFormatter.string(from: NSNumber(value: float)) ?? String(float)
         }
     }
+
+    private static let compactFloatFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 8
+        formatter.usesGroupingSeparator = false
+        return formatter
+    }()
     
     func storageMediumRepresentation() -> StorageMedium {
         switch self {

@@ -10,10 +10,12 @@ import SwiftUI
 struct ExecutionHistoryView: View {
     let execution: Execution
     @State private var selectedIndex: Int
+    @State private var isPlaying = false
+    @State private var playbackTask: Task<Void, Never>?
     
     init(execution: Execution) {
         self.execution = execution
-        _selectedIndex = State(initialValue: max(execution.history.count - 1, 0))
+        _selectedIndex = State(initialValue: 0)
     }
     
     var body: some View {
@@ -32,12 +34,25 @@ struct ExecutionHistoryView: View {
         }
         .navigationTitle("History")
         .checklistdInlineNavigationTitle()
+        .onDisappear {
+            stopPlayback()
+        }
     }
     
     private var historyControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Button {
+                    stopPlayback()
+                    moveToBeginning()
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canMoveBackward)
+                
+                Button {
+                    stopPlayback()
                     selectedIndex = max(selectedIndex - 1, 0)
                 } label: {
                     Image(systemName: "chevron.left")
@@ -45,15 +60,33 @@ struct ExecutionHistoryView: View {
                 .buttonStyle(.bordered)
                 .disabled(!canMoveBackward)
                 
+                Button {
+                    togglePlayback()
+                } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(execution.history.isEmpty || (!isPlaying && !canMoveForward))
+                
                 Text(positionText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 80)
                 
                 Button {
-                    selectedIndex = min(selectedIndex + 1, execution.history.count - 1)
+                    stopPlayback()
+                    moveForward()
                 } label: {
                     Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canMoveForward)
+                
+                Button {
+                    stopPlayback()
+                    moveToEnd()
+                } label: {
+                    Image(systemName: "forward.end.fill")
                 }
                 .buttonStyle(.bordered)
                 .disabled(!canMoveForward)
@@ -98,6 +131,58 @@ struct ExecutionHistoryView: View {
     private var positionText: String {
         guard !execution.history.isEmpty else { return "0 / 0" }
         return "\(selectedIndex + 1) / \(execution.history.count)"
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            stopPlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    private func startPlayback() {
+        guard canMoveForward else { return }
+        playbackTask?.cancel()
+        isPlaying = true
+        playbackTask = Task { @MainActor in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                } catch {
+                    break
+                }
+                
+                guard canMoveForward else {
+                    stopPlayback()
+                    break
+                }
+                
+                moveForward()
+            }
+        }
+    }
+
+    private func stopPlayback() {
+        playbackTask?.cancel()
+        playbackTask = nil
+        isPlaying = false
+    }
+
+    private func moveForward() {
+        selectedIndex = min(selectedIndex + 1, execution.history.count - 1)
+        if !canMoveForward {
+            stopPlayback()
+        }
+    }
+
+    private func moveToBeginning() {
+        selectedIndex = 0
+    }
+
+    private func moveToEnd() {
+        guard !execution.history.isEmpty else { return }
+        selectedIndex = execution.history.count - 1
     }
     
     private var replayedExecution: Execution? {

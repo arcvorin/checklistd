@@ -23,8 +23,7 @@ struct LoginView: View {
     @State private var executionPath: [ExecutionRoute] = []
     @State private var setupStateVersion = 0
     @State private var isContinuing = false
-    @State private var isShowingExecutionPicker: Bool = false
-    @State private var selectedRecipeRepo: OctoKit.Repository? = nil
+    @State private var selectedRecipeRepo: PairingSelection?
     @State private var selectedExecutionRepoURL: String = ""
     @State private var isSyncing = false
     @State private var isCreatingExecution = false
@@ -92,12 +91,14 @@ struct LoginView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 case .file(let fileURL):
-                                    if let file = executionFile(for: fileURL) {
-                                        ExecutionDetailView(file: file, sync: sync)
-                                    } else {
-                                        Text("Execution not found")
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    ExecutionLoadingDetailView(
+                                        fileURL: fileURL,
+                                        cachedFile: cachedExecutionFile(for: fileURL),
+                                        sync: sync,
+                                        onExecutionCompletionChanged: {
+                                            refreshExecutionRepositoriesInBackground()
+                                        }
+                                    )
                                 case .creating:
                                     LoadingExecutionView(message: statusMessage ?? "Creating execution...")
                                 }
@@ -118,8 +119,8 @@ struct LoginView: View {
         .onAppear {
             loadAuthenticatedState()
         }
-        .sheet(isPresented: $isShowingExecutionPicker) {
-            executionPickerSheet
+        .sheet(item: $selectedRecipeRepo) { selection in
+            executionPickerSheet(for: selection.repo)
         }
         .alert("Name execution", isPresented: $isShowingExecutionNamePrompt) {
             TextField("Execution name", text: $newExecutionName)
@@ -132,12 +133,28 @@ struct LoginView: View {
         } message: {
             Text("Give this execution a custom name.")
         }
-        .overlay(alignment: .bottom) {
-            if let statusMessage {
-                StatusBanner(message: statusMessage, isLoading: isSyncing || isCreatingExecution || isPushingExecution)
-                    .padding()
-            }
+        .safeAreaInset(edge: .bottom) {
+            statusBanner
         }
+    }
+
+    @ViewBuilder
+    private var statusBanner: some View {
+        if let statusMessage {
+            StatusBanner(message: statusMessage, isLoading: isSyncing || isCreatingExecution || isPushingExecution)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, isSetupComplete ? tabBarToastClearance : 8)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var tabBarToastClearance: CGFloat {
+        #if os(iOS)
+        56
+        #else
+        0
+        #endif
     }
     
     private var setupView: some View {
@@ -196,56 +213,105 @@ struct LoginView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            selectedRecipeRepo = repo
-            isShowingExecutionPicker = true
+            showExecutionPicker(for: repo)
         }
     }
     
-    @ViewBuilder
-    private var executionPickerSheet: some View {
-        if let recipeRepo = selectedRecipeRepo {
-            VStack(spacing: 20) {
-                Picker("Execution Repository", selection: $selectedExecutionRepoURL) {
-                    ForEach(repos, id: \.id) { repo in
-                        Text(repo.name ?? "No Name").tag(repo.cloneURL ?? "")
+    private func executionPickerSheet(for recipeRepo: OctoKit.Repository) -> some View {
+        let hasExistingPair = pairs.contains(where: { $0.recipeURL == recipeRepo.cloneURL })
+        
+        return NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(repos, id: \.checklistdStableID) { repo in
+                            executionRepoRow(repo)
+                            Divider()
+                                .padding(.leading)
+                        }
                     }
+                    .padding(.vertical, 6)
                 }
-                .checklistdExecutionPickerStyle()
-                .labelsHidden()
+                .frame(minWidth: 360, minHeight: 260)
+                
+                Divider()
+                
                 HStack {
+                    if hasExistingPair {
+                        Button("Remove Pair", role: .destructive) {
+                            sync.removePair(for: recipeRepo)
+                            pairs = sync.listPairs()
+                            refreshRecipeRepositories()
+                            refreshExecutionRepositories()
+                            dismissExecutionPicker()
+                        }
+                    }
+                    Spacer()
+                    Button("Cancel", role: .cancel) {
+                        dismissExecutionPicker()
+                    }
                     Button("Save") {
                         guard let executionRepo = repos.first(where: { $0.cloneURL == selectedExecutionRepoURL }) else { return }
                         sync.setPair(recipe: recipeRepo, execution: executionRepo)
                         pairs = sync.listPairs()
                         refreshRecipeRepositories()
                         refreshExecutionRepositories()
-                        isShowingExecutionPicker = false
-                        selectedRecipeRepo = nil
+                        dismissExecutionPicker()
                         syncInBackground(selectRecipesWhenDone: false)
                     }
-                    Spacer()
-                    Button("Remove Pair") {
-                        sync.removePair(for: recipeRepo)
-                        pairs = sync.listPairs()
-                        refreshRecipeRepositories()
-                        refreshExecutionRepositories()
-                        isShowingExecutionPicker = false
-                        selectedRecipeRepo = nil
+                    .disabled(selectedExecutionRepoURL.isEmpty)
+                }
+                .padding()
+            }
+            .navigationTitle("Execution Repo")
+            .checklistdInlineNavigationTitle()
+        }
+    }
+    
+    private func executionRepoRow(_ repo: OctoKit.Repository) -> some View {
+        Button {
+            selectedExecutionRepoURL = repo.cloneURL ?? ""
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(repo.name ?? "No Name")
+                        .foregroundStyle(.primary)
+                    if let cloneURL = repo.cloneURL, !cloneURL.isEmpty {
+                        Text(cloneURL)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
-                .padding(.horizontal)
-            }
-            .padding()
-            .onAppear {
-                if let existingPair = pairs.first(where: { $0.recipeURL == recipeRepo.cloneURL }) {
-                    selectedExecutionRepoURL = existingPair.executionURL
-                } else {
-                    selectedExecutionRepoURL = recipeRepo.cloneURL ?? ""
+                Spacer()
+                if repo.cloneURL == selectedExecutionRepoURL {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
                 }
             }
-        } else {
-            EmptyView()
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+    
+    private func showExecutionPicker(for recipeRepo: OctoKit.Repository) {
+        selectedExecutionRepoURL = defaultExecutionRepoURL(for: recipeRepo)
+        selectedRecipeRepo = PairingSelection(repo: recipeRepo)
+    }
+    
+    private func dismissExecutionPicker() {
+        selectedRecipeRepo = nil
+        selectedExecutionRepoURL = ""
+    }
+    
+    private func defaultExecutionRepoURL(for recipeRepo: OctoKit.Repository) -> String {
+        if let existingPair = pairs.first(where: { $0.recipeURL == recipeRepo.cloneURL }) {
+            return existingPair.executionURL
+        }
+        
+        return recipeRepo.cloneURL ?? repos.first?.cloneURL ?? ""
     }
     
     private func loadAuthenticatedState() {
@@ -395,6 +461,16 @@ struct LoginView: View {
         executionRepositories = repositories
         return repositories
     }
+
+    private func refreshExecutionRepositoriesInBackground() {
+        Task {
+            await Task.yield()
+            let repositories = sync.listExecutions()
+            await MainActor.run {
+                executionRepositories = repositories
+            }
+        }
+    }
     
     private func createExecution(for program: Program, recipeRepositoryURL: String) {
         pendingExecutionProgram = program
@@ -470,7 +546,7 @@ struct LoginView: View {
         }
     }
     
-    private func executionFile(for fileURL: URL) -> Sync.ExecutionFileDetails? {
+    private func cachedExecutionFile(for fileURL: URL) -> Sync.ExecutionFileDetails? {
         executionRepositories
             .flatMap(\.files)
             .first(where: { $0.fileURL == fileURL })
@@ -505,5 +581,19 @@ private struct StatusBanner: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 8)
+    }
+}
+
+private struct PairingSelection: Identifiable {
+    let repo: OctoKit.Repository
+    
+    var id: String {
+        repo.checklistdStableID
+    }
+}
+
+private extension OctoKit.Repository {
+    var checklistdStableID: String {
+        cloneURL ?? htmlURL ?? name ?? String(id ?? 0)
     }
 }

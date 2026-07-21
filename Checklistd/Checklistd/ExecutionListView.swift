@@ -10,13 +10,43 @@ struct ExecutionListView: View {
     let repository: Sync.ExecutionRepositoryDetails
     
     var body: some View {
-        List(repository.files, id: \.fileURL) { file in
-            NavigationLink(value: ExecutionRoute.file(file.fileURL)) {
-                ExecutionFileRow(file: file)
+        List {
+            Section("In Progress") {
+                if inProgressFiles.isEmpty {
+                    Text("No in-progress executions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(inProgressFiles, id: \.fileURL) { file in
+                        NavigationLink(value: ExecutionRoute.file(file.fileURL)) {
+                            ExecutionFileRow(file: file)
+                        }
+                    }
+                }
+            }
+            
+            Section("Completed") {
+                if completedFiles.isEmpty {
+                    Text("No completed executions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(completedFiles, id: \.fileURL) { file in
+                        NavigationLink(value: ExecutionRoute.file(file.fileURL)) {
+                            ExecutionFileRow(file: file)
+                        }
+                    }
+                }
             }
         }
         .navigationTitle(repository.name)
         .checklistdInlineNavigationTitle()
+    }
+
+    private var inProgressFiles: [Sync.ExecutionFileDetails] {
+        repository.files.filter { !$0.execution.isCompleted }
+    }
+
+    private var completedFiles: [Sync.ExecutionFileDetails] {
+        repository.files.filter(\.execution.isCompleted)
     }
 }
 
@@ -38,6 +68,11 @@ private struct ExecutionFileRow: View {
             Text(file.displayName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if file.execution.isCompleted {
+                Label("Completed", systemImage: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
             Text("Created by \(file.execution.createdByName) <\(file.execution.createdByEmail)>")
                 .font(.caption)
                 .foregroundStyle(.secondary)

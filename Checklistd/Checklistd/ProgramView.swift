@@ -12,6 +12,7 @@ struct ProgramView: View {
     var currentActor: () -> GitCommitIdentity? = { nil }
     var isReadOnly: Bool = false
     var stepHistoryEvents: [String: ExecutionHistoryEvent] = [:]
+    private let bottomAnchorID = "program-view-bottom-anchor"
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,23 +44,30 @@ struct ProgramView: View {
                 let visibleSteps = visibleActiveSteps(for: execution)
                 
                 ScrollViewReader { proxy in
-                    List(visibleSteps, id: \.offset) { index, activeStep in
-                        StepView(
-                            activeStep: activeStep,
-                            activeStepIndex: index,
-                            isCurrentStep: index == execution.activeSteps.indices.last && !execution.isCompleted,
-                            currentActor: currentActor,
-                            isReadOnly: isReadOnly,
-                            historyEvent: stepHistoryEvents[activeStep.stepEnvelope.step.id],
-                            execution: $execution
-                        )
+                    List {
+                        ForEach(visibleSteps, id: \.offset) { index, activeStep in
+                            StepView(
+                                activeStep: activeStep,
+                                activeStepIndex: index,
+                                isCurrentStep: index == execution.activeSteps.indices.last && !execution.isCompleted,
+                                currentActor: currentActor,
+                                isReadOnly: isReadOnly,
+                                historyEvent: stepHistoryEvents[activeStep.stepEnvelope.step.id],
+                                execution: $execution
+                            )
+                        }
+                        
+                        Color.clear
+                            .frame(height: 1)
+                            .listRowSeparator(.hidden)
+                            .id(bottomAnchorID)
                     }
                     .listStyle(.plain)
                     .onAppear {
-                        scrollToBottom(proxy: proxy, visibleSteps: visibleSteps, animated: false)
+                        scrollToBottomAfterLayout(proxy: proxy, animated: false)
                     }
                     .onChange(of: visibleStepSignature(for: execution)) {
-                        scrollToBottom(proxy: proxy, visibleSteps: visibleSteps, animated: true)
+                        scrollToBottomAfterLayout(proxy: proxy, animated: true)
                     }
                 }
             }
@@ -86,17 +94,21 @@ struct ProgramView: View {
     
     private func scrollToBottom(
         proxy: ScrollViewProxy,
-        visibleSteps: [(offset: Int, element: ActiveStep)],
         animated: Bool
     ) {
-        guard let lastStepId = visibleSteps.last?.offset else { return }
-        
         if animated {
             withAnimation {
-                proxy.scrollTo(lastStepId, anchor: .bottom)
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
         } else {
-            proxy.scrollTo(lastStepId, anchor: .bottom)
+            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+        }
+    }
+
+    private func scrollToBottomAfterLayout(proxy: ScrollViewProxy, animated: Bool) {
+        Task { @MainActor in
+            await Task.yield()
+            scrollToBottom(proxy: proxy, animated: animated)
         }
     }
 }
@@ -237,6 +249,14 @@ struct InputStepView: View {
     let currentActor: () -> GitCommitIdentity?
     let isReadOnly: Bool
     @Binding var execution: Execution?
+    @State private var intDraft = ""
+    @State private var floatDraft = ""
+    @FocusState private var focusedNumericField: NumericField?
+
+    private enum NumericField: Hashable {
+        case int
+        case float
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -247,6 +267,24 @@ struct InputStepView: View {
                 .disabled(isReadOnly || !isCurrentStep)
         }
         .padding(.vertical, 4)
+        .onAppear {
+            syncNumericDraftsFromStep()
+        }
+        .onChange(of: step.value?.interpolatedValue ?? "") {
+            syncNumericDraftsFromStep()
+        }
+        .onChange(of: focusedNumericField) {
+            if focusedNumericField != .int {
+                commitIntDraft(resyncInvalidDraft: true)
+            }
+            if focusedNumericField != .float {
+                commitFloatDraft(resyncInvalidDraft: true)
+            }
+        }
+        .onDisappear {
+            commitIntDraft(resyncInvalidDraft: true)
+            commitFloatDraft(resyncInvalidDraft: true)
+        }
     }
     
     @ViewBuilder
@@ -263,10 +301,19 @@ struct InputStepView: View {
                         Text(String(option)).tag(Optional(option))
                     }
                 }
+                .pickerStyle(.menu)
             case .int:
-                TextField("Value", text: intBinding)
+                TextField("Value", text: $intDraft)
                     .textFieldStyle(.roundedBorder)
                     .checklistdKeyboardType(.numberPad)
+                    .focused($focusedNumericField, equals: .int)
+                    .onChange(of: intDraft) {
+                        guard focusedNumericField == .int else { return }
+                        commitIntDraft(resyncInvalidDraft: false)
+                    }
+                    .onSubmit {
+                        commitIntDraft(resyncInvalidDraft: true)
+                    }
             case .float(_, _, let options) where options?.isEmpty == false:
                 Picker("Value", selection: floatPickerBinding(options: options!)) {
                     Text("Select").tag(nil as Float?)
@@ -274,10 +321,19 @@ struct InputStepView: View {
                         Text(String(option)).tag(Optional(option))
                     }
                 }
+                .pickerStyle(.menu)
             case .float:
-                TextField("Value", text: floatBinding)
+                TextField("Value", text: $floatDraft)
                     .textFieldStyle(.roundedBorder)
                     .checklistdKeyboardType(.decimalPad)
+                    .focused($focusedNumericField, equals: .float)
+                    .onChange(of: floatDraft) {
+                        guard focusedNumericField == .float else { return }
+                        commitFloatDraft(resyncInvalidDraft: false)
+                    }
+                    .onSubmit {
+                        commitFloatDraft(resyncInvalidDraft: true)
+                    }
             case .bool:
                 Toggle("Value", isOn: boolBinding)
             case .date:
@@ -297,6 +353,7 @@ struct InputStepView: View {
                             .tag(option)
                     }
                 }
+                .pickerStyle(.menu)
             case .date:
                 DatePicker("Value", selection: dateBinding, in: dateRange, displayedComponents: .date)
             default:
@@ -314,6 +371,7 @@ struct InputStepView: View {
                         Text(option).tag(option)
                     }
                 }
+                .pickerStyle(.menu)
                 TextField("Value", text: textBinding)
                     .textFieldStyle(.roundedBorder)
             }
@@ -324,6 +382,7 @@ struct InputStepView: View {
                     Text(option).tag(option)
                 }
             }
+            .pickerStyle(.menu)
         }
     }
     
@@ -388,31 +447,48 @@ struct InputStepView: View {
             }
         )
     }
-    
-    private var intBinding: Binding<String> {
-        Binding(
-            get: { step.value?.interpolatedValue ?? "" },
-            set: { newValue in
-                guard let value = Int(newValue) else {
-                    clearVariable()
-                    return
-                }
-                setVariableIfValid(.int(int: value))
-            }
-        )
+
+    private func syncNumericDraftsFromStep() {
+        if focusedNumericField != .int {
+            intDraft = step.value?.interpolatedValue ?? ""
+        }
+        if focusedNumericField != .float {
+            floatDraft = step.value?.interpolatedValue ?? ""
+        }
     }
-    
-    private var floatBinding: Binding<String> {
-        Binding(
-            get: { step.value?.interpolatedValue ?? "" },
-            set: { newValue in
-                guard let value = Float(newValue) else {
-                    clearVariable()
-                    return
-                }
-                setVariableIfValid(.float(float: value))
+
+    private func commitIntDraft(resyncInvalidDraft: Bool) {
+        guard case .int = step.inputKind else { return }
+        let draft = intDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !draft.isEmpty else {
+            clearVariable()
+            return
+        }
+        guard let value = Int(draft) else {
+            clearVariable()
+            if resyncInvalidDraft {
+                syncNumericDraftsFromStep()
             }
-        )
+            return
+        }
+        setVariableIfValid(.int(int: value), resyncInvalidDraft: resyncInvalidDraft)
+    }
+
+    private func commitFloatDraft(resyncInvalidDraft: Bool) {
+        guard case .float = step.inputKind else { return }
+        let draft = floatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !draft.isEmpty else {
+            clearVariable()
+            return
+        }
+        guard let value = Float(draft) else {
+            clearVariable()
+            if resyncInvalidDraft {
+                syncNumericDraftsFromStep()
+            }
+            return
+        }
+        setVariableIfValid(.float(float: value), resyncInvalidDraft: resyncInvalidDraft)
     }
     
     private var boolBinding: Binding<Bool> {
@@ -447,8 +523,15 @@ struct InputStepView: View {
     }
     
     private func setVariableIfValid(_ value: Variable) {
+        setVariableIfValid(value, resyncInvalidDraft: true)
+    }
+    
+    private func setVariableIfValid(_ value: Variable, resyncInvalidDraft: Bool) {
         guard (try? step.inputKind.validate(value)) != nil else {
             clearVariable()
+            if resyncInvalidDraft {
+                syncNumericDraftsFromStep()
+            }
             return
         }
         setVariable(value)
