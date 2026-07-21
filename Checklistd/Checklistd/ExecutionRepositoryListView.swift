@@ -8,6 +8,8 @@ import SwiftUI
 
 struct ExecutionRepositoryListView: View {
     let repositories: [Sync.ExecutionRepositoryDetails]
+    var isRefreshing: Bool = false
+    var refresh: () async -> Void = {}
     
     var body: some View {
         List(repositories, id: \.url) { repository in
@@ -18,8 +20,32 @@ struct ExecutionRepositoryListView: View {
                     Text("\(repository.files.count) executions")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let lastUpdated = repository.files.map(\.execution.updatedAt).max() {
+                        Text("Last updated \(Self.timestampFormatter.string(from: lastUpdated))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .refreshable {
+            await refresh()
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                if isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Refreshing executions")
                 }
             }
         }
     }
+    
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

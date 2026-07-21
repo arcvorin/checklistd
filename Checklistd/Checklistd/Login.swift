@@ -28,6 +28,8 @@ struct LoginView: View {
     @State private var isSyncing = false
     @State private var isCreatingExecution = false
     @State private var isPushingExecution = false
+    @State private var isRefreshingRecipesFromRemote = false
+    @State private var isRefreshingExecutionsFromRemote = false
     @State private var statusMessage: String? = nil
     @State private var isShowingExecutionNamePrompt = false
     @State private var newExecutionName = ""
@@ -56,9 +58,14 @@ struct LoginView: View {
                     NavigationStack(path: $recipePath) {
                         RecipeRepositoryListView(
                             repositories: recipeRepositories,
-                            createExecution: createExecution
+                            createExecution: createExecution,
+                            isRefreshing: isRefreshingRecipesFromRemote,
+                            refresh: refreshRecipesFromRemote
                         )
                         .navigationTitle("Recipe Repos")
+                        .task {
+                            await refreshRecipesFromRemote()
+                        }
                         .navigationDestination(for: String.self) { repositoryURL in
                             if let repository = recipeRepository(for: repositoryURL) {
                                 RecipeListView(
@@ -79,13 +86,27 @@ struct LoginView: View {
                     .tag(AppTab.recipes)
                     
                     NavigationStack(path: $executionPath) {
-                        ExecutionRepositoryListView(repositories: executionRepositories)
+                        ExecutionRepositoryListView(
+                            repositories: executionRepositories,
+                            isRefreshing: isRefreshingExecutionsFromRemote,
+                            refresh: refreshExecutionsFromRemote
+                        )
                             .navigationTitle("Execution Repos")
+                            .task {
+                                await refreshExecutionsFromRemote()
+                            }
                             .navigationDestination(for: ExecutionRoute.self) { route in
                                 switch route {
                                 case .repository(let repositoryURL):
                                     if let repository = executionRepository(for: repositoryURL) {
-                                        ExecutionListView(repository: repository)
+                                        ExecutionListView(
+                                            repository: repository,
+                                            isRefreshing: isRefreshingExecutionsFromRemote,
+                                            refresh: refreshExecutionsFromRemote
+                                        )
+                                        .task(id: repositoryURL) {
+                                            await refreshExecutionsFromRemote()
+                                        }
                                     } else {
                                         Text("Execution repository not found")
                                             .foregroundStyle(.secondary)
@@ -254,8 +275,6 @@ struct LoginView: View {
                         guard let executionRepo = repos.first(where: { $0.cloneURL == selectedExecutionRepoURL }) else { return }
                         sync.setPair(recipe: recipeRepo, execution: executionRepo)
                         pairs = sync.listPairs()
-                        refreshRecipeRepositories()
-                        refreshExecutionRepositories()
                         dismissExecutionPicker()
                         syncInBackground(selectRecipesWhenDone: false)
                     }
@@ -470,6 +489,26 @@ struct LoginView: View {
                 executionRepositories = repositories
             }
         }
+    }
+
+    @MainActor
+    private func refreshRecipesFromRemote() async {
+        guard isSetupComplete, !isSyncing, !isRefreshingRecipesFromRemote else { return }
+        isRefreshingRecipesFromRemote = true
+        defer { isRefreshingRecipesFromRemote = false }
+        
+        await sync.pullRepos()
+        refreshRecipeRepositories()
+    }
+
+    @MainActor
+    private func refreshExecutionsFromRemote() async {
+        guard isSetupComplete, !isSyncing, !isRefreshingExecutionsFromRemote else { return }
+        isRefreshingExecutionsFromRemote = true
+        defer { isRefreshingExecutionsFromRemote = false }
+        
+        await sync.pullRepos()
+        refreshExecutionRepositories()
     }
     
     private func createExecution(for program: Program, recipeRepositoryURL: String) {

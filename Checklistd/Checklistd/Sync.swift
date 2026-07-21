@@ -533,19 +533,27 @@ class Sync {
         }
         
         let pairs = self.syncPairs()
+        let identity = gitCommitIdentity()
+        await Task.detached(priority: .utility) {
+            await Self.pullRepositories(
+                pairs: pairs,
+                pat: pat,
+                identity: identity
+            )
+        }.value
+    }
+    
+    nonisolated private static func pullRepositories(
+        pairs: [RecipeExecutionPair],
+        pat: String,
+        identity: GitCommitIdentity?
+    ) async {
         let repoURLs = Set(pairs.flatMap { [$0.recipeURL, $0.executionURL] })
-        let repoURLsAnnotated = repoURLs.map({url in (url,
-            pairs.contains(where: {$0.recipeURL == url}),
-            pairs.contains(where: {$0.executionURL == url})
-        )})
         
-        for urlAnnotated in repoURLsAnnotated {
-            let urlString = urlAnnotated.0
-            let isRecipe = urlAnnotated.1
-            let isExecution = urlAnnotated.2
+        for urlString in repoURLs {
             
             guard let remoteURL = URL(string: urlString) else { continue }
-            let repoDir = Self.localRepoDirectory(for: urlString)
+            let repoDir = localRepoDirectory(for: urlString)
             
             do {
                 if !FileManager.default.fileExists(atPath: repoDir.path) {
@@ -554,9 +562,9 @@ class Sync {
                 } else {
                     let localRepo = try SwiftGitX.Repository(at: repoDir)
                     _ = try await localRepo.pull(
-                        conflictStrategy: isExecution && !isRecipe ? .keepLocalChanges : .takeRemoteChanges,
+                        conflictStrategy: .takeRemoteChanges,
                         pat: pat,
-                        commitIdentity: gitCommitIdentity()
+                        commitIdentity: identity
                     )
                 }
             } catch {

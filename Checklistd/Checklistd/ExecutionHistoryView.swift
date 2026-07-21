@@ -41,6 +41,10 @@ struct ExecutionHistoryView: View {
     
     private var historyControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text("Last updated \(Self.timestampFormatter.string(from: execution.updatedAt))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
             HStack(spacing: 12) {
                 Button {
                     stopPlayback()
@@ -281,4 +285,11 @@ struct ExecutionHistoryView: View {
         let lines = [event.displaySentence] + event.displayPayloadLines
         return lines.joined(separator: "\n")
     }
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

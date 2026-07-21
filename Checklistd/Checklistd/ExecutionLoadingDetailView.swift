@@ -37,6 +37,8 @@ struct ExecutionLoadingDetailView: View {
         file = nil
         errorMessage = nil
         
+        await sync.pullRepos()
+        
         if let loadedFile = await sync.loadExecutionFileDetails(for: fileURL) {
             file = loadedFile
         } else if let cachedFile {

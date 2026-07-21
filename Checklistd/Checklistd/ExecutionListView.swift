@@ -8,6 +8,8 @@ import SwiftUI
 
 struct ExecutionListView: View {
     let repository: Sync.ExecutionRepositoryDetails
+    var isRefreshing: Bool = false
+    var refresh: () async -> Void = {}
     
     var body: some View {
         List {
@@ -39,6 +41,18 @@ struct ExecutionListView: View {
         }
         .navigationTitle(repository.name)
         .checklistdInlineNavigationTitle()
+        .refreshable {
+            await refresh()
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                if isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Refreshing executions")
+                }
+            }
+        }
     }
 
     private var inProgressFiles: [Sync.ExecutionFileDetails] {

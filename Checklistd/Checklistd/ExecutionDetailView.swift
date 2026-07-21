@@ -24,6 +24,16 @@ struct ExecutionDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            if let execution {
+                lastUpdatedBanner(for: execution)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom, execution.isCompleted ? 0 : 8)
+                    .background(.bar)
+                
+                Divider()
+            }
+            
             if execution?.isCompleted == true {
                 completedBanner
                     .padding()
@@ -70,6 +80,17 @@ struct ExecutionDetailView: View {
             Spacer()
         }
     }
+
+    private func lastUpdatedBanner(for execution: Execution) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .foregroundStyle(.secondary)
+            Text("Last updated \(Self.timestampFormatter.string(from: execution.updatedAt))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
     
     private var navigationTitle: String {
         guard let execution else { return "Execution" }
@@ -95,4 +116,11 @@ struct ExecutionDetailView: View {
             }
         }
     }
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
