@@ -101,6 +101,7 @@ struct LoginView: View {
                                     if let repository = executionRepository(for: repositoryURL) {
                                         ExecutionListView(
                                             repository: repository,
+                                            currentActor: sync.gitCommitIdentity(),
                                             isRefreshing: isRefreshingExecutionsFromRemote,
                                             refresh: refreshExecutionsFromRemote
                                         )

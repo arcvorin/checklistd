@@ -8,14 +8,16 @@ import SwiftUI
 
 struct ExecutionListView: View {
     let repository: Sync.ExecutionRepositoryDetails
+    let currentActor: GitCommitIdentity?
     var isRefreshing: Bool = false
     var refresh: () async -> Void = {}
+    @State private var showsOnlyMine = true
     
     var body: some View {
         List {
             Section("In Progress") {
                 if inProgressFiles.isEmpty {
-                    Text("No in-progress executions")
+                    Text(showsOnlyMine ? "No in-progress executions created by you" : "No in-progress executions")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(inProgressFiles, id: \.fileURL) { file in
@@ -28,7 +30,7 @@ struct ExecutionListView: View {
             
             Section("Completed") {
                 if completedFiles.isEmpty {
-                    Text("No completed executions")
+                    Text(showsOnlyMine ? "No completed executions created by you" : "No completed executions")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(completedFiles, id: \.fileURL) { file in
@@ -38,6 +40,11 @@ struct ExecutionListView: View {
                     }
                 }
             }
+        }
+        .overlay(alignment: .bottomLeading) {
+            filterButton
+                .padding(.leading, 16)
+                .padding(.bottom, 12)
         }
         .navigationTitle(repository.name)
         .checklistdInlineNavigationTitle()
@@ -56,11 +63,52 @@ struct ExecutionListView: View {
     }
 
     private var inProgressFiles: [Sync.ExecutionFileDetails] {
-        repository.files.filter { !$0.execution.isCompleted }
+        filteredFiles.filter { !$0.execution.isCompleted }
     }
 
     private var completedFiles: [Sync.ExecutionFileDetails] {
-        repository.files.filter(\.execution.isCompleted)
+        filteredFiles.filter(\.execution.isCompleted)
+    }
+
+    private var filteredFiles: [Sync.ExecutionFileDetails] {
+        guard showsOnlyMine, let currentActor else {
+            return repository.files
+        }
+
+        return repository.files.filter {
+            $0.execution.createdByName == currentActor.name &&
+                $0.execution.createdByEmail == currentActor.email
+        }
+    }
+
+    private var filterButtonTitle: String {
+        showsOnlyMine ? "Mine" : "All"
+    }
+
+    private var filterButtonSystemImage: String {
+        showsOnlyMine ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+    }
+
+    private var filterButton: some View {
+        Button {
+            showsOnlyMine.toggle()
+        } label: {
+            Label(filterButtonTitle, systemImage: filterButtonSystemImage)
+                .labelStyle(.titleAndIcon)
+                .font(.callout.weight(.semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+        }
+        .buttonStyle(.plain)
+        .controlSize(.regular)
+        .background(.regularMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(.separator.opacity(0.45), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 10, x: 0, y: 3)
+        .accessibilityLabel(showsOnlyMine ? "Show all executions" : "Show my executions")
+        .disabled(currentActor == nil)
     }
 }
 
