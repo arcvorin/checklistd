@@ -129,9 +129,10 @@ struct Execution: Codable {
             throw ExecutionError.stepNotFound
         }
         
+        var activatedStepId: String?
         if (activeSteps.first(where: { $0.stepEnvelope.step.id == programCounter && !$0.isCompleted }) == nil) {
             activeSteps.append(ActiveStep(stepEnvelope: programCounterStepEnvelope, actor: actor))
-            appendHistoryEvent(.stepActivated, actor: actor, step: programCounterStepEnvelope.step)
+            activatedStepId = programCounterStepEnvelope.step.id
         }
         
         activeSteps = try activeSteps.enumerated().map { index, activeStep in
@@ -141,6 +142,12 @@ struct Execution: Codable {
             )
         }
         updateVariablesFromComputedSteps()
+
+        if let activatedStepId,
+           let activatedStep = activeSteps.first(where: { $0.stepEnvelope.step.id == activatedStepId && !$0.isCompleted }),
+           activatedStep.computedStep.step.visible {
+            appendHistoryEvent(.stepActivated, actor: actor, step: activatedStep.computedStep.step)
+        }
         
         if let currentStep = activeSteps.last,
            currentStep.stepEnvelope.step.id == programCounter {
@@ -231,6 +238,8 @@ struct Execution: Codable {
         inputStep: InputStep? = nil
     ) throws {
         let previousValue = variables[name]
+        guard previousValue != value else { return }
+        
         variables[name] = value
         updateActiveStepActor(stepId: inputStep?.id, actor: actor)
         appendInputChangedEvent(
@@ -249,6 +258,8 @@ struct Execution: Codable {
         inputStep: InputStep? = nil
     ) throws {
         let previousValue = variables[name]
+        guard previousValue != nil else { return }
+        
         variables.removeValue(forKey: name)
         updateActiveStepActor(stepId: inputStep?.id, actor: actor)
         appendHistoryEvent(
@@ -281,7 +292,10 @@ extension Execution {
             lines.append("")
             lines.append("No recorded events.")
         } else {
-            lines.append(contentsOf: history.map(markdownLine(for:)))
+            for (index, event) in history.enumerated() {
+                lines.append("")
+                lines.append(markdownBlock(for: event, number: index + 1))
+            }
         }
         
         lines.append("")
@@ -399,62 +413,22 @@ extension Execution {
         return nil
     }
     
-    private func markdownLine(for event: ExecutionHistoryEvent) -> String {
-        var parts = [
-            "- \(ExecutionTimestampFormatter.string(from: event.timestamp))",
-            "**\(event.type.rawValue)**",
-            markdownActor(name: event.actorName, email: event.actorEmail)
+    private func markdownBlock(for event: ExecutionHistoryEvent, number: Int) -> String {
+        var lines = [
+            "### \(number). \(markdownValue(event.displayTitle))",
+            "",
+            "\(markdownValue(event.displaySentence))"
         ]
         
-        if let stepDescription = markdownStepDescription(for: event) {
-            parts.append(stepDescription)
-        }
-        
-        let payload = markdownPayload(for: event)
+        let payload = event.displayPayloadLines
         if !payload.isEmpty {
-            parts.append(payload)
+            lines.append("")
+            lines.append(contentsOf: payload.map { "- \($0)" })
         }
         
-        return parts.joined(separator: " - ")
-    }
-    
-    private func markdownStepDescription(for event: ExecutionHistoryEvent) -> String? {
-        let displayName = event.stepLabel ?? event.stepName ?? event.stepId
-        guard let displayName else { return nil }
-        
-        if let stepId = event.stepId {
-            return "\(markdownValue(displayName)) (`\(stepId)`)"
-        }
-        
-        return markdownValue(displayName)
-    }
-    
-    private func markdownPayload(for event: ExecutionHistoryEvent) -> String {
-        var payload: [String] = []
-        
-        if let key = event.key {
-            payload.append("key `\(key)`")
-        }
-        if let previousValue = event.previousValue {
-            payload.append("previous `\(previousValue.interpolatedValue)`")
-        }
-        if let value = event.value {
-            payload.append("value `\(value.interpolatedValue)`")
-        }
-        if let result = event.result {
-            payload.append("result `\(result)`")
-        }
-        if let nextStepId = event.nextStepId {
-            payload.append("next `\(nextStepId)`")
-        }
-        if let reopenedIndex = event.reopenedIndex {
-            payload.append("reopened index `\(reopenedIndex)`")
-        }
-        if let removedStepIds = event.removedStepIds, !removedStepIds.isEmpty {
-            payload.append("removed `\(removedStepIds.joined(separator: ", "))`")
-        }
-        
-        return payload.joined(separator: ", ")
+        lines.append("")
+        lines.append("_\(ExecutionTimestampFormatter.string(from: event.timestamp)) by \(markdownActor(name: event.actorName, email: event.actorEmail))_")
+        return lines.joined(separator: "\n")
     }
     
     private func markdownActor(name: String, email: String) -> String {
@@ -578,6 +552,126 @@ struct ExecutionHistoryEvent: Codable, Identifiable {
         try container.encodeIfPresent(reopenedIndex, forKey: .reopenedIndex)
         try container.encodeIfPresent(removedStepIds, forKey: .removedStepIds)
         try container.encode(coalescesTyping, forKey: .coalescesTyping)
+    }
+}
+
+extension ExecutionHistoryEvent {
+    var displayTitle: String {
+        switch type {
+        case .executionCreated:
+            "Execution created"
+        case .inputChanged:
+            "Input updated"
+        case .inputCleared:
+            "Input cleared"
+        case .stepCompleted:
+            "Step completed"
+        case .stepReopened:
+            "Went back"
+        case .stepActivated:
+            "Step shown"
+        case .stepComputed:
+            "Value calculated"
+        case .conditionEvaluated:
+            "Condition checked"
+        case .executionCompleted:
+            "Execution completed"
+        }
+    }
+
+    var displaySentence: String {
+        let target = displayStepReference
+        
+        switch type {
+        case .executionCreated:
+            return "\(actorDisplayName) started the execution."
+        case .inputChanged:
+            if let value {
+                return "\(actorDisplayName) set \(displayKeyReference) to \(displayValue(value))."
+            }
+            return "\(actorDisplayName) updated \(target ?? displayKeyReference)."
+        case .inputCleared:
+            return "\(actorDisplayName) cleared \(target ?? displayKeyReference)."
+        case .stepCompleted:
+            return "\(actorDisplayName) completed \(target ?? "a step")."
+        case .stepReopened:
+            if let removedStepIds, !removedStepIds.isEmpty {
+                return "\(actorDisplayName) went back to \(target ?? "an earlier step"), removing \(removedStepIds.count) later \(removedStepIds.count == 1 ? "step" : "steps")."
+            }
+            return "\(actorDisplayName) went back to \(target ?? "an earlier step")."
+        case .stepActivated:
+            return "\(target ?? "A step") became active."
+        case .stepComputed:
+            if let key, let value {
+                return "\(target ?? "A calculation") set \(displayKey(key)) to \(displayValue(value))."
+            }
+            return "\(target ?? "A calculation") ran."
+        case .conditionEvaluated:
+            if let result {
+                return "\(target ?? "A condition") evaluated to \(result ? "true" : "false")."
+            }
+            return "\(target ?? "A condition") was checked."
+        case .executionCompleted:
+            return "The execution was completed."
+        }
+    }
+
+    var displayPayloadLines: [String] {
+        var lines: [String] = []
+        
+        if let stepId, displayStepName != stepId {
+            lines.append("Step id: `\(stepId)`")
+        }
+        if let key {
+            lines.append("Variable: `\(key)`")
+        }
+        if let previousValue {
+            lines.append("Previous value: \(displayValue(previousValue))")
+        }
+        if let value {
+            lines.append("New value: \(displayValue(value))")
+        }
+        if let result {
+            lines.append("Result: \(result ? "true" : "false")")
+        }
+        if let nextStepId {
+            lines.append("Next step: `\(nextStepId)`")
+        }
+        if let removedStepIds, !removedStepIds.isEmpty {
+            lines.append("Removed later steps: \(removedStepIds.map { "`\($0)`" }.joined(separator: ", "))")
+        }
+        
+        return lines
+    }
+
+    var displayStepReference: String? {
+        guard let displayStepName else { return nil }
+        return "“\(displayStepName)”"
+    }
+
+    private var displayStepName: String? {
+        let candidates = [stepLabel, stepName, stepId]
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && $0 != "Untitled" }
+    }
+
+    private var actorDisplayName: String {
+        let trimmedName = actorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? actorEmail : trimmedName
+    }
+
+    private var displayKeyReference: String {
+        guard let key else { return "the input" }
+        return displayKey(key)
+    }
+
+    private func displayKey(_ key: String) -> String {
+        "`\(key)`"
+    }
+
+    private func displayValue(_ value: Variable) -> String {
+        "`\(value.interpolatedValue)`"
     }
 }
 

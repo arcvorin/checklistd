@@ -15,7 +15,7 @@ enum StorageMedium: String, Codable {
     case float
 }
 
-enum Variable: Codable {
+enum Variable: Codable, Equatable {
     case string(value: String)
     case date(date: Date)
     case int(int: Int)

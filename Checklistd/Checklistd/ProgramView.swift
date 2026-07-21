@@ -143,9 +143,7 @@ struct StepView: View {
         HStack(alignment: .top, spacing: 12) {
             
             Button {
-                if canCompleteCurrentStep {
-                    try? execution?.completeStep(actor: currentActor())
-                }
+                completeCurrentStepIfPossible()
             } label: {
                 Image(systemName: activeStep.isCompleted ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(activeStep.isCompleted ? .clear : .secondary)
@@ -202,7 +200,11 @@ struct StepView: View {
         switch step.type {
             case .text:
                 if let textStep = step as? TextStep {
-                    TextStepView(step: textStep, isCompleted: activeStep.isCompleted)
+                    TextStepView(
+                        step: textStep,
+                        isCompleted: activeStep.isCompleted,
+                        completeStep: completeCurrentStepIfPossible
+                    )
                 } else {
                     UnsupportedStepView(step: step)
                 }
@@ -214,6 +216,7 @@ struct StepView: View {
                         isCurrentStep: isCurrentStep,
                         currentActor: currentActor,
                         isReadOnly: isReadOnly,
+                        completeStep: completeCurrentStepIfPossible,
                         execution: $execution
                     )
                 } else {
@@ -229,16 +232,31 @@ struct StepView: View {
     private func historyDescription(for event: ExecutionHistoryEvent) -> String {
         "\(event.type.rawValue) by \(event.actorName) <\(event.actorEmail)> at \(event.timestamp.formatted(date: .abbreviated, time: .standard))"
     }
+
+    private func completeCurrentStepIfPossible() {
+        guard canCompleteCurrentStep else { return }
+        try? execution?.completeStep(actor: currentActor())
+    }
 }
 
 struct TextStepView: View {
     let step: TextStep
     let isCompleted: Bool
+    let completeStep: () -> Void
     
     var body: some View {
-        Text(step.message)
-            .padding(.vertical, 4)
-            .strikethrough(isCompleted)
+        if isCompleted {
+            Text(step.message)
+                .padding(.vertical, 4)
+                .strikethrough(true)
+        } else {
+            Text(step.message)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    completeStep()
+                }
+        }
     }
 }
 
@@ -248,6 +266,7 @@ struct InputStepView: View {
     let isCurrentStep: Bool
     let currentActor: () -> GitCommitIdentity?
     let isReadOnly: Bool
+    let completeStep: () -> Void
     @Binding var execution: Execution?
     @State private var intDraft = ""
     @State private var floatDraft = ""
@@ -257,12 +276,14 @@ struct InputStepView: View {
         case int
         case float
     }
+
+    private var canEditInput: Bool {
+        !isReadOnly && isCurrentStep && !isCompleted
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(step.label ?? step.name)
-                .font(.headline)
-                .strikethrough(isCompleted)
+            label
             inputControl
                 .disabled(isReadOnly || !isCurrentStep)
         }
@@ -284,6 +305,22 @@ struct InputStepView: View {
         .onDisappear {
             commitIntDraft(resyncInvalidDraft: true)
             commitFloatDraft(resyncInvalidDraft: true)
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if isCompleted {
+            Text(step.label ?? step.name)
+                .font(.headline)
+                .strikethrough(true)
+        } else {
+            Text(step.label ?? step.name)
+                .font(.headline)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    completeStep()
+                }
         }
     }
     
@@ -458,6 +495,7 @@ struct InputStepView: View {
     }
 
     private func commitIntDraft(resyncInvalidDraft: Bool) {
+        guard canEditInput else { return }
         guard case .int = step.inputKind else { return }
         let draft = intDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !draft.isEmpty else {
@@ -475,6 +513,7 @@ struct InputStepView: View {
     }
 
     private func commitFloatDraft(resyncInvalidDraft: Bool) {
+        guard canEditInput else { return }
         guard case .float = step.inputKind else { return }
         let draft = floatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !draft.isEmpty else {
@@ -538,6 +577,7 @@ struct InputStepView: View {
     }
     
     private func setVariable(_ value: Variable) {
+        guard canEditInput else { return }
         guard var currentExecution = execution else { return }
         try? currentExecution.setVariable(
             name: step.key,
@@ -549,6 +589,7 @@ struct InputStepView: View {
     }
     
     private func clearVariable() {
+        guard canEditInput else { return }
         guard var currentExecution = execution else { return }
         try? currentExecution.clearVariable(
             name: step.key,

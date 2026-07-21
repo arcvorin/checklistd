@@ -267,10 +267,10 @@ struct ExecutionHistoryView: View {
     }
     
     private func eventTitle(for event: ExecutionHistoryEvent) -> String {
-        if let stepLabel = event.stepLabel ?? event.stepName {
-            return "\(event.type.rawValue): \(stepLabel)"
+        if let stepReference = event.displayStepReference {
+            return "\(event.displayTitle): \(stepReference)"
         }
-        return event.type.rawValue
+        return event.displayTitle
     }
     
     private func eventSubtitle(for event: ExecutionHistoryEvent) -> String {
@@ -278,27 +278,7 @@ struct ExecutionHistoryView: View {
     }
     
     private func eventPayload(for event: ExecutionHistoryEvent) -> String? {
-        var parts: [String] = []
-        
-        if let key = event.key {
-            parts.append("key \(key)")
-        }
-        if let previousValue = event.previousValue {
-            parts.append("previous \(previousValue.interpolatedValue)")
-        }
-        if let value = event.value {
-            parts.append("value \(value.interpolatedValue)")
-        }
-        if let result = event.result {
-            parts.append("result \(result)")
-        }
-        if let nextStepId = event.nextStepId {
-            parts.append("next \(nextStepId)")
-        }
-        if let removedStepIds = event.removedStepIds, !removedStepIds.isEmpty {
-            parts.append("removed \(removedStepIds.joined(separator: ", "))")
-        }
-        
-        return parts.joined(separator: ", ")
+        let lines = [event.displaySentence] + event.displayPayloadLines
+        return lines.joined(separator: "\n")
     }
 }
