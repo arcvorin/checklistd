@@ -10,6 +10,7 @@ struct ExecutionRepositoryListView: View {
     let repositories: [Sync.ExecutionRepositoryDetails]
     var isRefreshing: Bool = false
     var refresh: () async -> Void = {}
+    var navigateTo: (ExecutionRoute) -> Void = { _ in }
     
     var body: some View {
         List(repositories, id: \.url) { repository in
@@ -30,6 +31,16 @@ struct ExecutionRepositoryListView: View {
         }
         .refreshable {
             await refresh()
+        }
+        .onAppear {
+            if repositories.count == 1 {
+                navigateTo(.repository(repositories[0].url))
+            }
+        }
+        .onChange(of: repositories.map(\.url)) { 
+            if repositories.count == 1 {
+                navigateTo(.repository(repositories[0].url))
+            }
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {

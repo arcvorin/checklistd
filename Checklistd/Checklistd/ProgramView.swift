@@ -140,41 +140,43 @@ struct StepView: View {
     }
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            
-            Button {
-                completeCurrentStepIfPossible()
-            } label: {
-                Image(systemName: activeStep.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(activeStep.isCompleted ? .clear : .secondary)
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly || (!activeStep.isCompleted && !canCompleteCurrentStep))
-            .opacity(isReadOnly ? 0.45 : 1)
-            .padding(.top, 6)
-            VStack(alignment: .leading, spacing: 4) {
-                stepContent
-                    .opacity(activeStep.isCompleted ? 0.6 : 1)
-                if let historyEvent {
-                    Text(historyDescription(for: historyEvent))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else if isReadOnly, !activeStep.actorName.isEmpty || !activeStep.actorEmail.isEmpty {
-                    Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+        VStack {
+            HStack(alignment: .center, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    stepContent
+                        .opacity(activeStep.isCompleted ? 0.6 : 1)
+                    if let historyEvent {
+                        Text(historyDescription(for: historyEvent))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else if isReadOnly, !activeStep.actorName.isEmpty || !activeStep.actorEmail.isEmpty {
+                        Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if isDifferentActor {
+                        Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if isDifferentActor {
-                    Text("By \(activeStep.actorName) <\(activeStep.actorEmail)>")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                .padding(.vertical,0)
+                .padding(.horizontal, isDifferentActor ? 8 : 0)
+                .background(isDifferentActor ? Color.accentColor.opacity(0.08) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                Spacer()
+            }
+            if (!isReadOnly && !activeStep.isCompleted) {
+                HStack(spacing: 0) {
+                    Button("Continue") {
+                        completeCurrentStepIfPossible()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(!canCompleteCurrentStep)
+                    Spacer()
                 }
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, isDifferentActor ? 8 : 0)
-            .background(isDifferentActor ? Color.accentColor.opacity(0.08) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .onTapGesture {
             if !isReadOnly && activeStep.isCompleted {
@@ -373,6 +375,7 @@ struct InputStepView: View {
                     }
             case .bool:
                 Toggle("Value", isOn: boolBinding)
+                .labelsHidden()
             case .date:
                 dateInputControl
             case .choice(let options, let allowOther):

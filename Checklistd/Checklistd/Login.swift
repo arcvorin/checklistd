@@ -60,8 +60,10 @@ struct LoginView: View {
                             repositories: recipeRepositories,
                             createExecution: createExecution,
                             isRefreshing: isRefreshingRecipesFromRemote,
-                            refresh: refreshRecipesFromRemote
-                        )
+                            refresh: refreshRecipesFromRemote,
+                        ) {
+                            recipePath.append($0)
+                        }
                         .navigationTitle("Recipe Repos")
                         .task {
                             await refreshRecipesFromRemote()
@@ -90,7 +92,9 @@ struct LoginView: View {
                             repositories: executionRepositories,
                             isRefreshing: isRefreshingExecutionsFromRemote,
                             refresh: refreshExecutionsFromRemote
-                        )
+                        ) {
+                            executionPath.append($0)
+                        }
                             .navigationTitle("Execution Repos")
                             .task {
                                 await refreshExecutionsFromRemote()
